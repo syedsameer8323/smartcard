@@ -117,7 +117,22 @@ export default function Checkout() {
         <label className="check checkout-save"><input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} /> Save this address for next time</label>
         <h3 className="mt">Payment method</h3>
         <label className={`pay-option ${form.payment_method === "cod" ? "active" : ""}`}><input type="radio" name="payment_method" value="cod" checked={form.payment_method === "cod"} onChange={set} /><div><b>Cash on delivery</b><small>Pay when your order arrives</small></div></label>
-        <label className={`pay-option ${form.payment_method === "razorpay" ? "active" : ""}`}><input type="radio" name="payment_method" value="razorpay" checked={form.payment_method === "razorpay"} onChange={set} /><div><b>Pay online with Razorpay</b><small>UPI, cards and net banking where supported</small></div></label>
+        <label className={`pay-option ${form.payment_method === "razorpay" ? "active" : ""}`}>
+        <input
+        type="radio"
+        name="payment_method"
+        value="razorpay"
+        checked={form.payment_method === "razorpay"}
+        onChange={set}
+        />
+
+          <div>
+            <b>Pay Online</b>
+            <small>
+              Secure payment using UPI, QR code where available, debit or credit cards, and net banking.
+            </small>
+          </div>
+        </label>
       </div>
       <aside className="summary">
         <h3>Order summary</h3>

@@ -288,3 +288,36 @@ class PushSubscription(models.Model):
             self.endpoint.encode("utf-8")
         ).hexdigest()
         super().save(*args, **kwargs)
+
+
+class OrderEmailNotification(models.Model):
+    class Event(models.TextChoices):
+        SELLER_NEW_ORDER = "seller_new_order", "Seller new order"
+        SELLER_ORDER_CANCELLED = "seller_order_cancelled", "Seller order cancelled"
+        ORDER_PLACED = "order_placed", "Order placed"
+        PAYMENT_SUCCESSFUL = "payment_successful", "Payment successful"
+        ORDER_CONFIRMED = "order_confirmed", "Order confirmed"
+        ORDER_SHIPPED = "order_shipped", "Order shipped"
+        OUT_FOR_DELIVERY = "out_for_delivery", "Out for delivery"
+        ORDER_DELIVERED = "order_delivered", "Order delivered"
+        ORDER_CANCELLED = "order_cancelled", "Order cancelled"
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="email_notifications",
+    )
+    event = models.CharField(
+        max_length=30,
+        choices=Event.choices,
+    )
+    recipient_email = models.EmailField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["order", "event", "recipient_email"],
+                name="uniq_order_email_event_recipient",
+            )
+        ]        

@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import os
-
+from .email_notifications import schedule_order_notification
 from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
@@ -199,6 +199,20 @@ class OrderListCreateView(APIView):
         CartItem.objects.filter(user=request.user).delete()
         order = Order.objects.prefetch_related("items").get(pk=order.pk)
         notify_sellers(order, "New order received", f"Order {order.code} includes new item(s).")
+
+        # Schedule the customer order confirmation after the transaction commits.
+        customer_email = order.email or getattr(order.user, "email", "")
+        schedule_order_notification(order, customer_email, "order_placed")
+
+        # Email each seller who has products in this order.
+        seller_emails = (
+            order.items.exclude(seller__isnull=True)
+            .values_list("seller__email", flat=True)
+            .distinct()
+        )
+        for seller_email in seller_emails:
+            if seller_email:
+                schedule_order_notification(order, seller_email, "seller_new_order")
         if coupon:
             if order.payment_method == "cod":
                 Coupon.objects.filter(pk=coupon.pk).update(usage_count=F("usage_count") + 1)
@@ -248,7 +262,24 @@ class CustomerOrderCancelView(APIView):
             SellerNotification.objects.create(seller_id=seller_id, order=order, title="Order cancelled",
                 message=f"Customer cancelled order {order.code}. Stock was returned to inventory.")
         order = Order.objects.prefetch_related("items").get(pk=order.pk)
-        return Response({"message": "Order cancelled and stock restored.", "order": OrderSerializer(order).data})
+
+        # Schedule cancellation emails after the cancellation transaction commits.
+        customer_email = order.email or getattr(order.user, "email", "")
+        schedule_order_notification(order, customer_email, "order_cancelled")
+
+        seller_emails = (
+            order.items.exclude(seller__isnull=True)
+            .values_list("seller__email", flat=True)
+            .distinct()
+        )
+        for seller_email in seller_emails:
+            if seller_email:
+                schedule_order_notification(order, seller_email, "seller_order_cancelled")
+
+        return Response({
+            "message": "Order cancelled and stock restored.",
+            "order": OrderSerializer(order).data,
+        })
 
 
 class CouponApplyView(APIView):
@@ -415,6 +446,20 @@ class RazorpayVerifyView(APIView):
         order.payment_reference = payment_id
         order.save(update_fields=["payment_status", "payment_reference"])
         OrderItem.objects.filter(order=order, status="pending").update(status="confirmed")
+        # Schedule payment emails only after Razorpay verification succeeds.
+        customer_email = order.email or getattr(order.user, "email", "")
+        schedule_order_notification(order, customer_email, "payment_successful")
+
+        seller_emails = (
+            order.items.exclude(seller__isnull=True)
+            .values_list("seller__email", flat=True)
+            .distinct()
+        )
+        for seller_email in seller_emails:
+            if seller_email:
+                schedule_order_notification(order, seller_email, "payment_successful")
+
+
         if order.coupon_code:
             coupon = Coupon.objects.select_for_update().filter(code=order.coupon_code).first()
             if coupon:
