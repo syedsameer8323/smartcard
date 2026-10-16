@@ -213,7 +213,6 @@ input.switch:checked{background:var(--brand)} input.switch:checked::after{transf
 
 .order-shipping-info{display:flex;flex-direction:column;gap:.25rem;min-width:0}.order-shipping-info small{font-size:.78rem}
 
-.order-actions{display:flex;gap:.5rem;flex-wrap:wrap} */
 
 
 /* ===== Shared primitives (customer + seller) ===== */

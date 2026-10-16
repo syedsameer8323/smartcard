@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
-
+from decimal import Decimal
 from catalog.serializers import ProductSerializer
 
 from .models import (
@@ -243,12 +243,12 @@ class CouponSerializer(serializers.ModelSerializer):
     discount_value = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
-        min_value=0.01,
+        min_value=Decimal("0.01"),
     )
     minimum_order_value = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
-        min_value=0,
+        min_value=Decimal("0"),
     )
 
     class Meta:
