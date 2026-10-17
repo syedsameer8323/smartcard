@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { ROLE_HOME } from "../routes/ProtectedRoute.jsx";
 import Logo from "./Logo.jsx";
 
-const LINKS = [["Home", "#home"], ["Products", "#products"], ["About", "#about"], ["Features", "#features"]];
+const LINKS = [["Home", "#home"], ["About", "#about"], ["Features", "#features"]];
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
