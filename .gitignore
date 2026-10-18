@@ -18,3 +18,8 @@ database_backup/
 *.sql
 *.dump
 *.bak
+
+# Confidential files
+Notes/
+Internal URL.txt
+project_structure.txt
