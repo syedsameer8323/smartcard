@@ -950,3 +950,5 @@ input.switch:checked{background:var(--brand)} input.switch:checked::after{transf
   }
 }
 
+
+.upload-row{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.4rem}

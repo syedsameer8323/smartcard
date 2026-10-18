@@ -157,6 +157,7 @@ REST_FRAMEWORK = {
         "password_reset": "5/hour",
         "otp_verify": "10/hour",
         "otp_resend": "5/hour",
+        "image_upload": "60/hour",
     },
 }
 
@@ -199,7 +200,6 @@ EMAIL_BACKEND = os.environ.get(
 
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
-EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
 
 EMAIL_USE_TLS = (
     os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"

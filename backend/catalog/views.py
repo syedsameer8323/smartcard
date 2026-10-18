@@ -1,15 +1,24 @@
+import logging
 from decimal import Decimal, InvalidOperation
 
+import cloudinary
+import cloudinary.uploader
 from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
 
 from users.permissions import IsSeller
 
 from .models import Category, Product
 from .serializers import CategorySerializer, ProductSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class ProductPagination(PageNumberPagination):
@@ -94,3 +103,53 @@ class SellerProductViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(seller=self.request.user)
+
+
+MAX_IMAGE_BYTES = 8 * 1024 * 1024  # the browser shrinks big photos first; this is the hard server limit
+
+
+def _looks_like_image(head: bytes) -> bool:
+    """Check the file's real signature (JPEG / PNG / WebP), not just its name or declared type."""
+    return (
+        head.startswith(b"\xff\xd8\xff")
+        or head.startswith(b"\x89PNG\r\n\x1a\n")
+        or (head[:4] == b"RIFF" and head[8:12] == b"WEBP")
+    )
+
+
+class SellerImageUploadView(APIView):
+    """Seller uploads a product photo -> stored on Cloudinary -> returns its permanent URL.
+
+    The URL is then saved in Product.image_url by the normal create/update product call,
+    so no database change is needed and products that already use pasted URLs keep working.
+    """
+
+    permission_classes = [IsSeller]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "image_upload"
+
+    def post(self, request):
+        file = request.FILES.get("image")
+        if file is None:
+            return Response({"message": "Please choose an image to upload."}, status=400)
+        if file.size > MAX_IMAGE_BYTES:
+            return Response({"message": "That image is too large. Please choose one under 8 MB."}, status=400)
+        head = file.read(12)
+        file.seek(0)
+        if not _looks_like_image(head):
+            return Response({"message": "Only JPG, PNG or WebP images are allowed."}, status=400)
+        if not cloudinary.config().cloud_name:
+            logger.error("CLOUDINARY_URL is not configured")
+            return Response({"message": "Image uploads are not set up on the server yet."}, status=503)
+        try:
+            result = cloudinary.uploader.upload(
+                file,
+                folder="smartcart/products",
+                resource_type="image",
+                transformation=[{"width": 1200, "height": 1200, "crop": "limit"}, {"quality": "auto"}],
+            )
+        except Exception:
+            logger.exception("Cloudinary upload failed")
+            return Response({"message": "Image upload failed. Please try again."}, status=503)
+        return Response({"url": result["secure_url"]}, status=201)

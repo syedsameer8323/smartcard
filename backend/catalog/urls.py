@@ -10,4 +10,5 @@ urlpatterns = [
     path("categories/", views.CategoryListView.as_view()),
     path("products/", views.ProductListView.as_view()),
     path("products/<int:pk>/", views.ProductDetailView.as_view()),
+    path("seller/upload-image/", views.SellerImageUploadView.as_view()),
 ] + router.urls

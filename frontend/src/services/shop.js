@@ -39,6 +39,11 @@ export const sellerApi = {
   createProduct: (data) => api.post("/seller/products/", data),
   updateProduct: (id, data) => api.patch(`/seller/products/${id}/`, data),
   deleteProduct: (id) => api.delete(`/seller/products/${id}/`),
+  uploadImage: (file) => {
+    const body = new FormData();
+    body.append("image", file);
+    return api.post("/seller/upload-image/", body, { timeout: 60000 });
+  },
   orders: (params) => api.get("/seller/orders/", { params }),
   updateOrder: (id, status) => api.patch(`/seller/orders/${id}/`, { status }),
   notifications: () => api.get("/seller/notifications/"),

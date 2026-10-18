@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Icon from "../../components/Icon.jsx";
 import ProductImage from "../../components/ProductImage.jsx";
@@ -9,6 +9,7 @@ import { parseApiError } from "../../services/api.js";
 import { catalogApi, sellerApi } from "../../services/shop.js";
 import { useAsync, useDebounced } from "../../utils/hooks.js";
 import { money } from "../../utils/format.js";
+import { compressImage } from "../../utils/image.js";
 
 const BLANK = { name: "", category: "", price: "", stock: "0", image_url: "", description: "", is_active: true };
 const FILTERS = [["", "All"], ["active", "Active"], ["inactive", "Hidden"], ["low", "Low stock"], ["out", "Sold out"]];
@@ -19,10 +20,34 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   const [f, setF] = useState(editing ? { ...BLANK, ...product, category: product.category ?? "", price: String(product.price), stock: String(product.stock) } : BLANK);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
   const set = (k, v) => { setF((x) => ({ ...x, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
+
+  const pickImage = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // lets the seller pick the same file again later
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      setErrors((x) => ({ ...x, image_url: "Please choose a JPG, PNG or WebP image." }));
+      return;
+    }
+    setErrors((x) => ({ ...x, image_url: undefined }));
+    setUploading(true);
+    try {
+      const { data } = await sellerApi.uploadImage(await compressImage(file));
+      set("image_url", data.url);
+      toast.success("Image uploaded");
+    } catch (err) {
+      const { message } = parseApiError(err);
+      setErrors((x) => ({ ...x, image_url: message }));
+      toast.error(message);
+    } finally { setUploading(false); }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
+    if (uploading) return;
     const v = {};
     if (!f.name.trim()) v.name = "Product name is required.";
     if (!(Number(f.price) > 0)) v.price = "Enter a price greater than 0.";
@@ -47,9 +72,9 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   return (
     <Drawer title={editing ? "Edit product" : "Add product"} onClose={onClose}
       footer={<><button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
-        <button form="product-form" className="btn btn-primary" disabled={busy}>{busy ? <><Spinner /> Saving…</> : editing ? "Save changes" : "Create product"}</button></>}>
+        <button form="product-form" className="btn btn-primary" disabled={busy || uploading}>{busy ? <><Spinner /> Saving…</> : editing ? "Save changes" : "Create product"}</button></>}>
       <form id="product-form" onSubmit={submit} noValidate>
-        <div className="img-preview"><ProductImage product={{ id: product.id || 1, name: f.name || "Preview", image_url: f.image_url, category_detail: categories.find((c) => c.id === Number(f.category)) }} /></div>
+        <div className="img-preview"><ProductImage key={f.image_url} product={{ id: product.id || 1, name: f.name || "Preview", image_url: f.image_url, category_detail: categories.find((c) => c.id === Number(f.category)) }} /></div>
         <div className="field"><label htmlFor="p-name">Product name</label><input id="p-name" className={`ctl ${errors.name ? "has-error" : ""}`} value={f.name} onChange={(e) => set("name", e.target.value)} maxLength={160} /><Err k="name" /></div>
         <div className="field"><label htmlFor="p-cat">Category</label>
           <select id="p-cat" className="ctl" value={f.category} onChange={(e) => set("category", e.target.value)}>
@@ -59,7 +84,20 @@ function ProductForm({ product, categories, onClose, onSaved }) {
           <div className="field"><label htmlFor="p-price">Price</label><input id="p-price" className={`ctl ${errors.price ? "has-error" : ""}`} type="number" step="0.01" min="0" value={f.price} onChange={(e) => set("price", e.target.value)} /><Err k="price" /></div>
           <div className="field"><label htmlFor="p-stock">Stock</label><input id="p-stock" className={`ctl ${errors.stock ? "has-error" : ""}`} type="number" min="0" step="1" value={f.stock} onChange={(e) => set("stock", e.target.value)} /><Err k="stock" /></div>
         </div>
-        <div className="field"><label htmlFor="p-img">Image URL <span className="muted">(optional)</span></label><input id="p-img" className={`ctl ${errors.image_url ? "has-error" : ""}`} value={f.image_url} onChange={(e) => set("image_url", e.target.value)} placeholder="https://…" /><Err k="image_url" /></div>
+        <div className="field">
+          <label htmlFor="p-img">Product image <span className="muted">(optional)</span></label>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={pickImage} />
+          <div className="upload-row">
+            <button type="button" className="btn btn-outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading ? <><Spinner /> Uploading…</> : f.image_url ? "Change image" : "Upload image"}
+            </button>
+            {f.image_url && !uploading && <button type="button" className="btn btn-outline" onClick={() => set("image_url", "")}>Remove</button>}
+          </div>
+          <input id="p-img" className={`ctl ${errors.image_url ? "has-error" : ""}`} value={f.image_url} onChange={(e) => set("image_url", e.target.value)}
+            placeholder="…or paste an image URL (https://…)" disabled={uploading} aria-label="Image URL" />
+          <small className="muted">Upload a JPG, PNG or WebP (large photos are resized automatically), or paste a link to an image.</small>
+          <Err k="image_url" />
+        </div>
         <div className="field"><label htmlFor="p-desc">Description</label><textarea id="p-desc" className="ctl" rows={5} value={f.description} onChange={(e) => set("description", e.target.value)} /></div>
         <label className="switch-row"><div><b>Visible in store</b><small className="muted">Hidden products can't be bought</small></div>
           <input type="checkbox" className="switch" checked={f.is_active} onChange={(e) => set("is_active", e.target.checked)} /></label>
