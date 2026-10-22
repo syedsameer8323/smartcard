@@ -3,7 +3,10 @@ import re
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
 from decimal import Decimal
+from catalog.pricing import load_active_offers, price_info
 from catalog.serializers import ProductSerializer
+
+from .cancellation import customer_cancel_block
 
 from .models import (
     CartItem,
@@ -30,7 +33,11 @@ class CartItemSerializer(serializers.ModelSerializer):
         fields = ("id", "quantity", "product", "line_total")
 
     def get_line_total(self, obj):
-        return f"{obj.product.price * obj.quantity:.2f}"
+        # Festival offers are loaded once per request and cached on the root serializer.
+        root = self.root
+        if not hasattr(root, "_offer_rules"):
+            root._offer_rules = load_active_offers()
+        return f"{price_info(obj.product, root._offer_rules)['sale_price'] * obj.quantity:.2f}"
 
 
 class CartAddSerializer(serializers.Serializer):
@@ -57,6 +64,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "name",
             "image_url",
             "price",
+            "list_price",
+            "offer_name",
             "quantity",
             "line_total",
             "status",
@@ -66,6 +75,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "shipped_at",
             "out_for_delivery_at",
             "delivered_at",
+            "cancelled_at",
+            "cancelled_by",
+            "cancel_reason",
+            "cancel_note",
+            "refund_amount",
         )
 
     def get_line_total(self, obj):
@@ -76,6 +90,10 @@ class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     code = serializers.CharField(read_only=True)
     status = serializers.SerializerMethodField()
+    can_cancel = serializers.SerializerMethodField()
+    cancel_blocked_reason = serializers.SerializerMethodField()
+    refund_total = serializers.SerializerMethodField()
+    offer_savings = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -83,6 +101,10 @@ class OrderSerializer(serializers.ModelSerializer):
             "id",
             "code",
             "status",
+            "can_cancel",
+            "cancel_blocked_reason",
+            "refund_total",
+            "offer_savings",
             "total",
             "subtotal",
             "discount_amount",
@@ -106,6 +128,19 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_at",
             "items",
         )
+
+    def get_can_cancel(self, obj):
+        return customer_cancel_block(obj, list(obj.items.all())) is None
+
+    def get_cancel_blocked_reason(self, obj):
+        return customer_cancel_block(obj, list(obj.items.all()))
+
+    def get_refund_total(self, obj):
+        return f"{sum((i.refund_amount for i in obj.items.all()), Decimal('0.00')):.2f}"
+
+    def get_offer_savings(self, obj):
+        saved = sum(((i.list_price - i.price) * i.quantity for i in obj.items.all() if i.list_price and i.status != "cancelled"), Decimal("0.00"))
+        return f"{saved:.2f}"
 
     def get_status(self, obj):
         statuses = {item.status for item in obj.items.all()}
@@ -217,6 +252,7 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "image_url",
             "product",
             "price",
+            "offer_name",
             "quantity",
             "line_total",
             "status",
@@ -226,6 +262,10 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "shipped_at",
             "out_for_delivery_at",
             "delivered_at",
+            "cancelled_by",
+            "cancel_reason",
+            "cancel_note",
+            "refund_amount",
         )
 
     def get_ship_to(self, obj):

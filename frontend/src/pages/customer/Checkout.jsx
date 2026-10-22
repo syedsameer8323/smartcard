@@ -308,6 +308,7 @@ export default function Checkout() {
         <h3>Order summary</h3>
         <ul className="mini-list">{cart.items.map((i) => <li key={i.id}><div className="mini-img"><ProductImage product={i.product} /></div><div><span>{i.product.name}</span><small className="muted">Qty {i.quantity}</small></div><b>{money(i.line_total)}</b></li>)}</ul>
         <div className="coupon-box"><label className="label-like" htmlFor="coupon-code">Coupon code</label><div className="coupon-entry"><input id="coupon-code" className="input" value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} disabled={!!coupon} placeholder="e.g. SMART10" /><button type="button" className="btn btn-secondary" disabled={couponBusy || !couponInput.trim()} onClick={applyCoupon}>{couponBusy ? <Spinner /> : "Apply"}</button></div>{couponError && <p className="field-error" role="alert">{couponError}</p>}{coupon && <div className="coupon-applied"><span>✓ {coupon.code} applied</span><button type="button" className="link-button" onClick={() => { setCoupon(null); setCouponInput(""); setCouponError(""); }}>Remove</button></div>}</div>
+        {Number(cart.offer_savings) > 0 && <div className="savings-note">🎉 You're saving {money(cart.offer_savings)} with festival offers</div>}
         <div className="sum-row"><span>Subtotal</span><b>{money(subtotal)}</b></div>
         <div className="sum-row"><span>Discount</span><b className="discount-value">−{money(discount)}</b></div>
         <div className="sum-row"><span>Shipping</span><b>{shipping ? money(shipping) : "Free"}</b></div>

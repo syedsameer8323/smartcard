@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+from .cancellation import CUSTOMER_REASONS, cancel_items, customer_cancel_block
 from .email_notifications import schedule_order_notification
 from django.db import transaction
 from django.db.models import F
@@ -13,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from catalog.models import Product
+from catalog.pricing import load_active_offers, price_info
 from catalog.serializers import ProductSerializer
 from users.permissions import IsCustomer
 
@@ -22,7 +24,7 @@ from .serializers import (BusinessError, CartAddSerializer, CartItemSerializer, 
                           SellerNotificationSerializer)
 
 
-def coupon_discount(code, subtotal, user=None):
+def coupon_discount(code, subtotal, user=None, rules=None):
     code = (code or "").strip().upper()
     if not code:
         return None, Decimal("0.00")
@@ -32,7 +34,8 @@ def coupon_discount(code, subtotal, user=None):
     eligible_subtotal = subtotal
     if coupon.seller_id and user:
         eligible_items = CartItem.objects.filter(user=user, product__seller_id=coupon.seller_id).select_related("product")
-        eligible_subtotal = sum((item.product.price * item.quantity for item in eligible_items), Decimal("0.00"))
+        rules = load_active_offers() if rules is None else rules
+        eligible_subtotal = sum((price_info(item.product, rules)["sale_price"] * item.quantity for item in eligible_items), Decimal("0.00"))
         if eligible_subtotal <= 0:
             raise BusinessError("This coupon is not applicable to products in your cart.")
     if coupon.expires_at and coupon.expires_at <= timezone.now():
@@ -72,15 +75,19 @@ def notify_sellers(order, title, message):
                 pass
 
 
-def cart_subtotal(user):
-    return sum((item.product.price * item.quantity for item in CartItem.objects.filter(user=user).select_related("product")), Decimal("0.00"))
+def cart_subtotal(user, rules=None):
+    rules = load_active_offers() if rules is None else rules
+    items = CartItem.objects.filter(user=user).select_related("product")
+    return sum((price_info(i.product, rules)["sale_price"] * i.quantity for i in items), Decimal("0.00"))
 
 
 def cart_payload(user):
+    rules = load_active_offers()
     items = CartItem.objects.filter(user=user).select_related("product__category", "product__seller")
-    subtotal = sum(i.product.price * i.quantity for i in items)
+    subtotal = sum((price_info(i.product, rules)["sale_price"] * i.quantity for i in items), Decimal("0.00"))
+    list_total = sum((i.product.price * i.quantity for i in items), Decimal("0.00"))
     return {"items": CartItemSerializer(items, many=True).data, "subtotal": f"{subtotal:.2f}",
-            "count": sum(i.quantity for i in items)}
+            "offer_savings": f"{list_total - subtotal:.2f}", "count": sum(i.quantity for i in items)}
 
 
 class CartView(APIView):
@@ -167,6 +174,8 @@ class OrderListCreateView(APIView):
         if not cart:
             raise BusinessError("Your cart is empty.")
         products = {p.id: p for p in Product.objects.select_for_update().filter(id__in=[c.product_id for c in cart])}
+        rules = load_active_offers()
+        pricing = {c.product_id: price_info(products[c.product_id], rules) for c in cart}
         subtotal = Decimal("0.00")
         for c in cart:
             p = products[c.product_id]
@@ -174,8 +183,8 @@ class OrderListCreateView(APIView):
                 raise BusinessError(f"'{p.name}' is no longer available. Please remove it from your cart.")
             if p.stock < c.quantity:
                 raise BusinessError(f"Only {p.stock} of '{p.name}' left in stock. Please update your cart.")
-            subtotal += p.price * c.quantity
-        coupon, discount = coupon_discount(coupon_code, subtotal, request.user) if coupon_code else (None, Decimal("0.00"))
+            subtotal += pricing[c.product_id]["sale_price"] * c.quantity
+        coupon, discount = coupon_discount(coupon_code, subtotal, request.user, rules) if coupon_code else (None, Decimal("0.00"))
         shipping_fee = Decimal("0.00")
         total = max(Decimal("0.00"), subtotal - discount + shipping_fee)
         # Keep the legacy address field populated for existing order views/integrations.
@@ -190,8 +199,11 @@ class OrderListCreateView(APIView):
         order = Order.objects.create(user=request.user, **data)
         for c in cart:
             p = products[c.product_id]
+            info = pricing[c.product_id]
             OrderItem.objects.create(order=order, product=p, seller=p.seller, name=p.name, image_url=p.image_url,
-                                     price=p.price, quantity=c.quantity)
+                                     price=info["sale_price"], quantity=c.quantity,
+                                     list_price=info["list_price"] if info["rule"] else None,
+                                     offer_name=info["rule"].name if info["rule"] else "")
             Product.objects.filter(pk=p.pk).update(stock=F("stock") - c.quantity)
             if p.stock - c.quantity <= 5:
                 SellerNotification.objects.create(seller_id=p.seller_id, order=order, title="Low stock alert",
@@ -233,53 +245,46 @@ class OrderDetailView(APIView):
 
 
 class CustomerOrderCancelView(APIView):
+    """Customer cancels an order that the seller has not started preparing yet.
+
+    Cash-on-delivery orders are simply cancelled. Orders already paid online are cancelled
+    AND refunded to the original payment method (Razorpay), all in one step.
+    """
     permission_classes = [IsCustomer]
 
     @transaction.atomic
     def post(self, request, pk):
-        order = get_object_or_404(Order.objects.select_for_update().prefetch_related("items"), pk=pk, user=request.user)
-        if order.payment_status == "paid" or (order.payment_method == "razorpay" and order.payment_status != "failed"):
-            raise BusinessError("Paid or currently processing online orders cannot be cancelled here. Contact support if needed.")
+        # The app always sends a reason; older clients that don't are recorded as "Other reason".
+        reason_key = str(request.data.get("reason") or "other")
+        if reason_key not in CUSTOMER_REASONS:
+            raise BusinessError("Please choose a valid reason for cancelling.")
+        note = str(request.data.get("note") or "").strip()[:300]
+
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk, user=request.user)
         items = list(order.items.select_for_update().select_related("product", "seller"))
-        if not items or any(item.status not in ("pending", "confirmed") for item in items):
-            raise BusinessError("This order can no longer be cancelled because fulfilment has progressed.")
-        seller_ids = set()
-        for item in items:
-            if item.product_id:
-                Product.objects.filter(pk=item.product_id).update(stock=F("stock") + item.quantity)
-            if item.seller_id:
-                seller_ids.add(item.seller_id)
-            item.status = "cancelled"
-            item.save(update_fields=["status"])
-        if order.coupon_reserved and order.coupon_code:
-            coupon = Coupon.objects.select_for_update().filter(code=order.coupon_code).first()
-            if coupon and coupon.reserved_count > 0:
-                coupon.reserved_count -= 1
-                coupon.save(update_fields=["reserved_count"])
-            order.coupon_reserved = False
-            order.save(update_fields=["coupon_reserved"])
-        for seller_id in seller_ids:
+        blocked = customer_cancel_block(order, items)
+        if blocked:
+            raise BusinessError(blocked)
+
+        to_cancel = [i for i in items if i.status != "cancelled"]
+        refund_total = cancel_items(order, items, to_cancel, by="customer", reason=CUSTOMER_REASONS[reason_key], note=note)
+
+        for seller_id in {i.seller_id for i in to_cancel if i.seller_id}:
             SellerNotification.objects.create(seller_id=seller_id, order=order, title="Order cancelled",
-                message=f"Customer cancelled order {order.code}. Stock was returned to inventory.")
+                message=f"Customer cancelled order {order.code} ({CUSTOMER_REASONS[reason_key]}). Stock was returned to inventory.")
         order = Order.objects.prefetch_related("items").get(pk=order.pk)
 
-        # Schedule cancellation emails after the cancellation transaction commits.
+        # Emails are sent after the transaction commits.
         customer_email = order.email or getattr(order.user, "email", "")
         schedule_order_notification(order, customer_email, "order_cancelled")
-
-        seller_emails = (
-            order.items.exclude(seller__isnull=True)
-            .values_list("seller__email", flat=True)
-            .distinct()
-        )
-        for seller_email in seller_emails:
+        for seller_email in order.items.exclude(seller__isnull=True).values_list("seller__email", flat=True).distinct():
             if seller_email:
                 schedule_order_notification(order, seller_email, "seller_order_cancelled")
 
-        return Response({
-            "message": "Order cancelled and stock restored.",
-            "order": OrderSerializer(order).data,
-        })
+        message = "Order cancelled and stock restored."
+        if refund_total > 0:
+            message = f"Order cancelled. A refund of ₹{refund_total:.2f} has been started to your original payment method."
+        return Response({"message": message, "order": OrderSerializer(order).data})
 
 
 class CouponApplyView(APIView):

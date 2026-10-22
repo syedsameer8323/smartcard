@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "../../components/Icon.jsx";
 import ProductImage from "../../components/ProductImage.jsx";
+import PriceTag from "../../components/PriceTag.jsx";
 import { EmptyState, PageHeader, QtyStepper, Skeleton } from "../../components/ui.jsx";
 import { useShop } from "../../context/ShopContext.jsx";
 import { money } from "../../utils/format.js";
@@ -23,7 +24,8 @@ export default function Cart() {
               <Link to={`/product/${i.product.id}`} className="cart-img"><ProductImage product={i.product} /></Link>
               <div className="cart-info">
                 <Link to={`/product/${i.product.id}`} className="pcard-name">{i.product.name}</Link>
-                <span className="muted small">by {i.product.seller_name} · {money(i.product.price)} each</span>
+                <span className="muted small">by {i.product.seller_name}</span>
+                <PriceTag product={i.product} size="sm" />
                 {i.product.stock < i.quantity && <span className="field-error">Only {i.product.stock} available</span>}
                 <button className="link-btn" onClick={() => removeItem(i.id)}><Icon name="trash" size={15} />Remove</button>
               </div>
@@ -34,6 +36,7 @@ export default function Cart() {
         </ul>
         <aside className="summary">
           <h3>Order summary</h3>
+          {Number(cart.offer_savings) > 0 && <div className="savings-note">🎉 You're saving {money(cart.offer_savings)} with festival offers</div>}
           <div className="sum-row"><span>Subtotal</span><b>{money(cart.subtotal)}</b></div>
           <div className="sum-row"><span>Shipping</span><b>Free</b></div>
           <div className="sum-row total"><span>Total</span><b>{money(cart.subtotal)}</b></div>

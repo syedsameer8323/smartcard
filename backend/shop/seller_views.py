@@ -17,8 +17,9 @@ from rest_framework.views import APIView
 from catalog.models import Product
 from users.permissions import IsSeller
 
+from .cancellation import SELLER_REASONS, cancel_items
 from .email_notifications import schedule_order_notification
-from .models import OrderItem
+from .models import Order, OrderItem
 from .serializers import BusinessError, SellerOrderItemSerializer
 
 
@@ -218,38 +219,51 @@ class SellerOrderUpdateView(APIView):
                 f"{item.status} to {new_status}."
             )
 
-        # Restore stock if the seller cancels this item.
-        if new_status == "cancelled" and item.product_id:
-            Product.objects.filter(
-                pk=item.product_id
-            ).update(
-                stock=F("stock") + item.quantity
+        refund_total = 0
+
+        if new_status == "cancelled":
+            # Cancelling restores stock, frees the coupon and refunds the customer if they already paid online.
+            reason_key = str(request.data.get("reason", "other"))
+            reason = SELLER_REASONS.get(reason_key, SELLER_REASONS["other"])
+            note = str(request.data.get("note") or "").strip()[:300]
+            order = Order.objects.select_for_update().get(pk=order.pk)
+            all_items = list(order.items.all())
+            target = next(i for i in all_items if i.id == item.id)
+            refund_total = cancel_items(
+                order, all_items, [target], by="seller", reason=reason, note=note,
             )
+            item = target
+        else:
+            item.status = new_status
 
-        item.status = new_status
+            update_fields = [
+                "status",
+                "status_updated_at",
+            ]
 
-        update_fields = [
-            "status",
-            "status_updated_at",
-        ]
+            timestamp_field = TIMESTAMP_FIELDS.get(new_status)
 
-        timestamp_field = TIMESTAMP_FIELDS.get(new_status)
+            if timestamp_field:
+                setattr(
+                    item,
+                    timestamp_field,
+                    timezone.now(),
+                )
+                update_fields.append(timestamp_field)
 
-        if timestamp_field:
-            setattr(
-                item,
-                timestamp_field,
-                timezone.now(),
-            )
-            update_fields.append(timestamp_field)
-
-        item.save(update_fields=update_fields)
+            item.save(update_fields=update_fields)
 
         # Refresh item statuses before calculating the overall status.
         new_order_status = get_order_status(order)
 
-        # Notify the customer only when the overall order status changes.
-        if new_order_status != old_order_status:
+        # Always tell the customer when an item is cancelled; otherwise only when the overall status changes.
+        if new_status == "cancelled":
+            schedule_order_notification(
+                order=order,
+                recipient=order.email or getattr(order.user, "email", ""),
+                event="order_cancelled",
+            )
+        elif new_order_status != old_order_status:
             event = EMAIL_EVENTS.get(new_order_status)
 
             if event:
@@ -264,7 +278,11 @@ class SellerOrderUpdateView(APIView):
                     event=event,
                 )
 
+        message = f"Order marked as {new_status}"
+        if refund_total:
+            message += f". ₹{refund_total:.2f} is being refunded to the customer."
+
         return Response({
-            "message": f"Order marked as {new_status}",
+            "message": message,
             "item": SellerOrderItemSerializer(item).data,
         })

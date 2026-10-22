@@ -20,6 +20,7 @@ import Overview from "./pages/seller/Overview.jsx";
 import SellerProducts from "./pages/seller/Products.jsx";
 import SellerOrders from "./pages/seller/Orders.jsx";
 import SellerCoupons from "./pages/seller/Coupons.jsx";
+import SellerOffers from "./pages/seller/Offers.jsx";
 
 export default function App() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/seller" element={<Overview />} />
           <Route path="/seller/products" element={<SellerProducts />} />
           <Route path="/seller/orders" element={<SellerOrders />} />
+          <Route path="/seller/offers" element={<SellerOffers />} />
           <Route path="/seller/coupons" element={<SellerCoupons />} />
         </Route>
       </Route>

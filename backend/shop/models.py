@@ -81,6 +81,10 @@ class Order(models.Model):
     locality = models.CharField(max_length=160, blank=True)
     state = models.CharField(max_length=100, blank=True)
     delivery_instructions = models.CharField(max_length=500, blank=True)
+    cancel_reason = models.CharField(
+        max_length=300,
+        blank=True,
+        default="")
 
     payment_status = models.CharField(
         max_length=20,
@@ -138,12 +142,24 @@ class OrderItem(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField()
 
+    # Festival-offer snapshot: what the list price was and which sale gave the discount.
+    list_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    offer_name = models.CharField(max_length=80, blank=True)
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,
     )
+
+    # Cancellation and refund details (filled in when the item is cancelled).
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.CharField(max_length=10, blank=True)  # "customer" or "seller"
+    cancel_reason = models.CharField(max_length=80, blank=True, default="")
+    cancel_note = models.CharField(max_length=300, blank=True)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    refund_reference = models.CharField(max_length=120, blank=True)
 
     # Latest status update time.
     status_updated_at = models.DateTimeField(auto_now=True)

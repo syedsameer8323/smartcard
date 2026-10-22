@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import Icon from "./Icon.jsx";
 import ProductImage from "./ProductImage.jsx";
+import PriceTag, { OfferBadge } from "./PriceTag.jsx";
 import { useShop } from "../context/ShopContext.jsx";
-import { money } from "../utils/format.js";
 
 export default function ProductCard({ product }) {
   const { wishlist, toggleWishlist, addToCart } = useShop();
@@ -18,6 +18,7 @@ export default function ProductCard({ product }) {
           aria-pressed={saved} aria-label={saved ? "Remove from wishlist" : "Add to wishlist"}>
           <Icon name="heart" size={18} />
         </button>
+        <OfferBadge product={product} />
         {out && <span className="tag tag-out">Sold out</span>}
         {low && <span className="tag tag-low">Only {product.stock} left</span>}
       </div>
@@ -26,7 +27,7 @@ export default function ProductCard({ product }) {
         <Link to={`/product/${product.id}`} className="pcard-name">{product.name}</Link>
         <span className="pcard-seller">by {product.seller_name}</span>
         <div className="pcard-foot">
-          <strong>{money(product.price)}</strong>
+          <PriceTag product={product} />
           <button className="btn btn-primary btn-sm" disabled={out} onClick={() => addToCart(product.id)}>
             <Icon name="cart" size={16} />{out ? "Unavailable" : "Add"}
           </button>

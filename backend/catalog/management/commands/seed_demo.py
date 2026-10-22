@@ -75,7 +75,7 @@ class Command(BaseCommand):
             # Other sellers' catalog and real inventory are never changed by seeding.
             changed = []
             if not new and product.price == legacy_demo_prices.get(name) and not product.image_url:
-                product.price = price
+                / = price
                 changed.append("price")
             if not product.image_url and image_urls.get(name):
                 product.image_url = image_urls[name]

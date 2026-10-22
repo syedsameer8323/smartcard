@@ -10,6 +10,7 @@ import { catalogApi, sellerApi } from "../../services/shop.js";
 import { useAsync, useDebounced } from "../../utils/hooks.js";
 import { money } from "../../utils/format.js";
 import { compressImage } from "../../utils/image.js";
+import "../../styles/offers.css";
 
 const BLANK = { name: "", category: "", price: "", stock: "0", image_url: "", description: "", is_active: true };
 const FILTERS = [["", "All"], ["active", "Active"], ["inactive", "Hidden"], ["low", "Low stock"], ["out", "Sold out"]];
@@ -152,7 +153,7 @@ export default function Products() {
               <tbody>{rows.map((p) => (
                 <tr key={p.id}>
                   <td><div className="cell-product"><div className="thumb-sm"><ProductImage product={p} /></div><div><b>{p.name}</b><small className="muted">{p.category_detail?.name || "Uncategorized"}</small></div></div></td>
-                  <td>{money(p.price)}</td>
+                  <td>{money(p.price)}{p.discount_percent && <small className="offer-mini">{Number(p.discount_percent)}% off → {money(p.sale_price)}</small>}</td>
                   <td><span className={`stock-chip ${p.stock === 0 ? "out" : p.stock <= 5 ? "low" : "ok"}`}>{p.stock === 0 ? "Sold out" : p.stock <= 5 ? `${p.stock} · Low` : p.stock}</span></td>
                   <td><input type="checkbox" className="switch" checked={p.is_active} onChange={() => toggle(p)} aria-label={`Visible: ${p.name}`} /></td>
                   <td className="right"><button className="icon-btn" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`}><Icon name="edit" size={18} /></button>

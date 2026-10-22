@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ProductImage from "../../components/ProductImage.jsx";
 import {
+  ConfirmModal,
   EmptyState,
   PageHeader,
   Skeleton,
@@ -11,6 +12,8 @@ import Icon from "../../components/Icon.jsx";
 import { ordersApi } from "../../services/shop.js";
 import { useAsync } from "../../utils/hooks.js";
 import { money, shortDate } from "../../utils/format.js";
+import { CUSTOMER_CANCEL_REASONS } from "../../utils/cancel.js";
+import "../../styles/offers.css";
 import { parseApiError } from "../../services/api.js";
 import { useToast } from "../../components/Toast.jsx";
 
@@ -85,7 +88,14 @@ function TrackingTimeline({ item, orderCreatedAt }) {
 
           <div>
             <strong>Order item cancelled</strong>
-            <p>This item will not proceed to delivery.</p>
+            <p>
+              {item.cancelled_by
+                ? `Cancelled by ${item.cancelled_by === "seller" ? "the seller" : "you"}${item.cancel_reason ? ` · ${item.cancel_reason}` : ""}.`
+                : "This item will not proceed to delivery."}
+            </p>
+            {Number(item.refund_amount) > 0 && (
+              <p>Refund of {money(item.refund_amount)} started to your original payment method (5–7 business days).</p>
+            )}
 
             {formatTimestamp(item.status_updated_at) && (
               <small>
@@ -169,21 +179,27 @@ export default function Orders() {
     reload,
   } = useAsync(() => ordersApi.list(), []);
 
-  const cancelOrder = async (order) => {
-    if (
-      !window.confirm(
-        `Cancel order ${order.code}? This will restore available stock.`,
-      )
-    ) {
-      return;
-    }
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+
+  const askCancel = (order) => {
+    setCancelTarget(order);
+    setReason("");
+    setNote("");
+  };
+
+  const cancelOrder = async () => {
+    const order = cancelTarget;
+    if (!order || !reason) return;
 
     setCancelling(order.id);
 
     try {
-      const { data: result } = await ordersApi.cancel(order.id);
+      const { data: result } = await ordersApi.cancel(order.id, { reason, note: note.trim() });
 
       toast.success(result.message);
+      setCancelTarget(null);
       reload();
     } catch (err) {
       toast.error(parseApiError(err).message);
@@ -366,6 +382,8 @@ export default function Orders() {
                       <small className="muted">
                         Qty {item.quantity} ·{" "}
                         {money(item.price)} each
+                        {item.list_price && <span className="was">{money(item.list_price)}</span>}
+                        {item.offer_name && <span className="offer-chip">{item.offer_name}</span>}
                       </small>
                     </div>
 
@@ -410,6 +428,13 @@ export default function Orders() {
                       ? ` · Coupon ${o.coupon_code}`
                       : ""}
                   </small>
+
+                  {(Number(o.offer_savings) > 0 || Number(o.refund_total) > 0) && (
+                    <small className="order-extra">
+                      {Number(o.offer_savings) > 0 && <span className="good">🎉 Festival offers saved you {money(o.offer_savings)}</span>}
+                      {Number(o.refund_total) > 0 && <span className="good">Refund started: {money(o.refund_total)}</span>}
+                    </small>
+                  )}
                 </div>
 
                 <div className="order-actions">
@@ -426,26 +451,52 @@ export default function Orders() {
                       </button>
                     )}
 
-                  {o.payment_method === "cod" &&
-                    o.payment_status !== "paid" &&
-                    ["pending", "confirmed"].includes(
-                      o.status,
-                    ) && (
-                      <button
-                        className="btn btn-ghost btn-sm danger-text"
-                        disabled={cancelling === o.id}
-                        onClick={() => cancelOrder(o)}
-                      >
-                        {cancelling === o.id
-                          ? "Cancelling…"
-                          : "Cancel order"}
-                      </button>
-                    )}
+                  {o.can_cancel && (
+                    <button
+                      className="btn btn-ghost btn-sm danger-text"
+                      disabled={cancelling === o.id}
+                      onClick={() => askCancel(o)}
+                    >
+                      Cancel order
+                    </button>
+                  )}
+
+                  {!o.can_cancel && !["cancelled", "delivered"].includes(o.status) && o.cancel_blocked_reason && (
+                    <small className="muted">{o.cancel_blocked_reason}</small>
+                  )}
                 </div>
               </footer>
             </article>
           ))}
         </div>
+      )}
+
+      {cancelTarget && (
+        <ConfirmModal
+          title={`Cancel order ${cancelTarget.code}?`}
+          message="Tell us why — it helps sellers improve. This can't be undone."
+          confirmLabel="Cancel order"
+          dismissLabel="Keep order"
+          busy={cancelling === cancelTarget.id}
+          confirmDisabled={!reason}
+          onConfirm={cancelOrder}
+          onClose={() => setCancelTarget(null)}
+        >
+          <div>
+            <label htmlFor="cancel-reason">Reason for cancelling</label>
+            <select id="cancel-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)}>
+              <option value="">Select a reason…</option>
+              {CUSTOMER_CANCEL_REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="cancel-note">Anything else? (optional)</label>
+            <textarea id="cancel-note" className="ctl" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {cancelTarget.payment_status === "paid"
+            ? <div className="refund-box paid">💸 Your payment of <b>{money(cancelTarget.total)}</b> will be refunded to your original payment method within 5–7 business days.</div>
+            : <div className="refund-box unpaid">You haven't paid for this order yet, so nothing will be charged.</div>}
+        </ConfirmModal>
       )}
     </>
   );

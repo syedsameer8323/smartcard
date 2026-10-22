@@ -14,7 +14,7 @@ export default function Shop() {
   const f = {
     q: params.get("q") || "", category: params.get("category") || "", min_price: params.get("min_price") || "",
     max_price: params.get("max_price") || "", sort: params.get("sort") || "newest",
-    in_stock: params.get("in_stock") === "true", page: Number(params.get("page") || 1),
+    in_stock: params.get("in_stock") === "true", offer: params.get("offer") === "true", page: Number(params.get("page") || 1),
   };
   const [price, setPrice] = useState({ min: f.min_price, max: f.max_price });
   useEffect(() => setPrice({ min: f.min_price, max: f.max_price }), [f.min_price, f.max_price]);
@@ -29,11 +29,11 @@ export default function Shop() {
   const cats = useAsync(() => catalogApi.categories(), []);
   const res = useAsync(() => catalogApi.products({
     q: f.q || undefined, category: f.category || undefined, min_price: f.min_price || undefined,
-    max_price: f.max_price || undefined, sort: f.sort, in_stock: f.in_stock || undefined, page: f.page, page_size: PAGE_SIZE,
+    max_price: f.max_price || undefined, sort: f.sort, in_stock: f.in_stock || undefined, offer: f.offer || undefined, page: f.page, page_size: PAGE_SIZE,
   }), [params.toString()]);
 
   const activeCat = (cats.data || []).find((c) => c.slug === f.category);
-  const hasFilters = f.q || f.category || f.min_price || f.max_price || f.in_stock;
+  const hasFilters = f.q || f.category || f.min_price || f.max_price || f.in_stock || f.offer;
   const results = res.data?.results || [];
 
   return (
@@ -58,6 +58,7 @@ export default function Shop() {
           </div>
           <button className="btn btn-outline btn-block btn-sm">Apply</button>
         </form>
+        <label className="check"><input type="checkbox" checked={f.offer} onChange={(e) => update({ offer: e.target.checked })} /> 🎉 Festival offers only</label>
         <label className="check"><input type="checkbox" checked={f.in_stock} onChange={(e) => update({ in_stock: e.target.checked })} /> In stock only</label>
         {hasFilters && <button className="btn btn-ghost btn-block" onClick={() => setParams({})}>Clear all filters</button>}
       </aside>
@@ -65,7 +66,7 @@ export default function Shop() {
       <section className="shop-results">
         <div className="results-bar">
           <div>
-            <h1>{f.q ? `Results for “${f.q}”` : activeCat ? activeCat.name : "All products"}</h1>
+            <h1>{f.q ? `Results for “${f.q}”` : f.offer ? "Festival deals" : activeCat ? activeCat.name : "All products"}</h1>
             <p className="muted">{res.data ? `${res.data.count} product${res.data.count === 1 ? "" : "s"}` : "Loading…"}</p>
           </div>
           <div className="results-tools">

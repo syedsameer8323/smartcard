@@ -3,11 +3,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Icon from "../../components/Icon.jsx";
 import ProductCard from "../../components/ProductCard.jsx";
 import ProductImage from "../../components/ProductImage.jsx";
+import PriceTag, { OfferBadge } from "../../components/PriceTag.jsx";
 import { EmptyState, QtyStepper, Skeleton } from "../../components/ui.jsx";
 import { useShop } from "../../context/ShopContext.jsx";
 import { catalogApi } from "../../services/shop.js";
 import { useAsync } from "../../utils/hooks.js";
 import { money } from "../../utils/format.js";
+import { festivalOf, endsIn, formatDateTime } from "../../utils/offers.js";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -24,6 +26,7 @@ export default function ProductDetail() {
   if (error || !p) return <EmptyState icon="search" title="Product not found" text="It may have been removed or is no longer available." action={<Link to="/shop" className="btn btn-primary">Back to shop</Link>} />;
 
   const out = p.stock === 0;
+  const saving = Number(p.price) - Number(p.sale_price ?? p.price);
   const saved = wishlist.includes(p.id);
   const others = (related.data?.results || []).filter((r) => r.id !== p.id).slice(0, 4);
 
@@ -34,12 +37,19 @@ export default function ProductDetail() {
         {p.category_detail && <><span>/</span><Link to={`/shop?category=${p.category_detail.slug}`}>{p.category_detail.name}</Link></>}
       </nav>
       <div className="detail">
-        <div className="detail-media"><ProductImage product={p} /></div>
+        <div className="detail-media"><ProductImage product={p} /><OfferBadge product={p} /></div>
         <div className="detail-info">
           {p.category_detail && <span className="pcard-cat">{p.category_detail.icon} {p.category_detail.name}</span>}
           <h1>{p.name}</h1>
           <p className="muted">Sold by <b>{p.seller_name}</b></p>
-          <div className="detail-price">{money(p.price)}</div>
+          <PriceTag product={p} size="lg" />
+          {saving > 0 && <p className="detail-save">You save {money(saving)} on this item</p>}
+          {p.offer && (
+            <div className={`offer-strip fest-${p.offer.festival}`}>
+              <span aria-hidden="true">{festivalOf(p.offer.festival).emoji}</span><b>{p.offer.name}</b>
+              <small>{endsIn(p.offer.ends_at)} · until {formatDateTime(p.offer.ends_at)}</small>
+            </div>
+          )}
           <p className={`stock ${out ? "out" : p.stock <= 5 ? "low" : "ok"}`}>
             <Icon name={out ? "alert" : "check"} size={16} />
             {out ? "Out of stock" : p.stock <= 5 ? `Only ${p.stock} left, order soon` : "In stock"}

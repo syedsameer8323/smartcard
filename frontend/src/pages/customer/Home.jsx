@@ -5,6 +5,8 @@ import { ProductGridSkeleton, Skeleton } from "../../components/ui.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { catalogApi } from "../../services/shop.js";
 import { useAsync } from "../../utils/hooks.js";
+import { festivalOf, endsIn, percentText } from "../../utils/offers.js";
+import "../../styles/offers.css";
 
 function Section({ title, subtitle, to, children }) {
   return (
@@ -64,6 +66,14 @@ export default function Home() {
   const firstName = user?.name?.trim()?.split(/\s+/)[0] || "there";
 
   const cats = useAsync(() => catalogApi.categories(), []);
+  const offers = useAsync(() => catalogApi.activeOffers(), []);
+  const hasOffers = (offers.data?.offers || []).length > 0;
+  const deals = useAsync(
+    () => (hasOffers ? catalogApi.products({ offer: "true", in_stock: "true", page_size: 4 }) : Promise.resolve({ data: { results: [] } })),
+    [hasOffers],
+  );
+  const topOffer = offers.data?.offers?.[0];
+  const topFest = topOffer ? festivalOf(topOffer.festival) : null;
   const fresh = useAsync(
     () => catalogApi.products({ sort: "newest", page_size: 8 }),
     []
@@ -111,6 +121,20 @@ export default function Home() {
         </div>
       </section>
 
+      {topOffer && (
+        <section className={`festival-banner fest-${topFest.key}`} aria-label="Festival offers">
+          <span className="festival-emoji" aria-hidden="true">{topFest.emoji}</span>
+          <div className="festival-copy">
+            <h2>{topOffer.name} is live!</h2>
+            <p>
+              Up to {percentText(topOffer.max_discount_percent)} off on {offers.data.product_count} product
+              {offers.data.product_count === 1 ? "" : "s"} · {endsIn(topOffer.ends_at)}
+            </p>
+          </div>
+          <Link to="/shop?offer=true" className="btn btn-lg">Shop festival deals →</Link>
+        </section>
+      )}
+
       <section className="customer-quick-section" aria-labelledby="quick-actions-title">
         <div className="customer-section-intro">
           <div>
@@ -143,6 +167,14 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {hasOffers && (deals.data?.results || []).length > 0 && (
+        <Section title={`${topFest.emoji} Festival deals`} subtitle="Limited-time prices from our sellers" to="/shop?offer=true">
+          <div className="product-grid">
+            {deals.data.results.map((product) => <ProductCard key={product.id} product={product} />)}
+          </div>
+        </Section>
+      )}
 
       <Section title="Shop by category" subtitle="Find your way to something good">
         {cats.loading && !cats.data ? (

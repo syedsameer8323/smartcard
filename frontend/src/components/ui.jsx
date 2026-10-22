@@ -80,16 +80,17 @@ export function Drawer({ title, onClose, children, footer }) {
   );
 }
 
-export function ConfirmModal({ title, message, confirmLabel = "Delete", busy, onConfirm, onClose }) {
+export function ConfirmModal({ title, message, confirmLabel = "Delete", dismissLabel = "Cancel", busy, confirmDisabled, children, onConfirm, onClose }) {
   useEscape(onClose);
   return (
     <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="alertdialog" aria-modal="true" aria-label={title}>
         <span className="empty-icon danger"><Icon name="alert" size={26} /></span>
         <h3>{title}</h3><p className="muted">{message}</p>
+        {children && <div className="modal-body">{children}</div>}
         <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn-danger" onClick={onConfirm} disabled={busy}>{busy ? "Working…" : confirmLabel}</button>
+          <button className="btn btn-outline" onClick={onClose} disabled={busy}>{dismissLabel}</button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={busy || confirmDisabled}>{busy ? "Working…" : confirmLabel}</button>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ export const catalogApi = {
   categories: () => api.get("/categories/"),
   products: (params) => api.get("/products/", { params }),
   product: (id) => api.get(`/products/${id}/`),
+  activeOffers: () => api.get("/offers/active/"),
 };
 
 export const cartApi = {
@@ -21,7 +22,7 @@ export const wishlistApi = {
 
 export const ordersApi = {
   list: () => api.get("/orders/"),
-  cancel: (id) => api.post(`/orders/${id}/cancel/`),
+  cancel: (id, body = {}) => api.post(`/orders/${id}/cancel/`, body),
   checkout: (payload) => api.post("/orders/", payload),
   applyCoupon: (code) => api.post("/coupons/apply/", { code }),
   addresses: () => api.get("/shipping-addresses/"),
@@ -45,11 +46,15 @@ export const sellerApi = {
     return api.post("/seller/upload-image/", body, { timeout: 60000 });
   },
   orders: (params) => api.get("/seller/orders/", { params }),
-  updateOrder: (id, status) => api.patch(`/seller/orders/${id}/`, { status }),
+  updateOrder: (id, status, extra = {}) => api.patch(`/seller/orders/${id}/`, { status, ...extra }),
   notifications: () => api.get("/seller/notifications/"),
   markNotificationRead: (id) => api.patch(`/seller/notifications/${id}/read/`),
   savePushSubscription: (subscription) => api.post("/seller/push-subscription/", subscription),
   deletePushSubscription: (endpoint) => api.delete("/seller/push-subscription/", { data: { endpoint } }),
+  offers: () => api.get("/seller/offers/"),
+  createOffer: (payload) => api.post("/seller/offers/", payload),
+  updateOffer: (id, payload) => api.patch(`/seller/offers/${id}/`, payload),
+  deleteOffer: (id) => api.delete(`/seller/offers/${id}/`),
   coupons: () => api.get("/seller/coupons/"),
   createCoupon: (payload) => api.post("/seller/coupons/", payload),
   updateCoupon: (id, payload) => api.patch(`/seller/coupons/${id}/`, payload),

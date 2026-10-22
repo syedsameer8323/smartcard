@@ -94,6 +94,20 @@ def send_order_notification(order, recipient, event):
 
             products = "\n".join(product_lines) or "No products available."
 
+            extra = ""
+            if event in ("order_cancelled", "seller_order_cancelled"):
+                cancelled = [i for i in items if i.status == "cancelled"]
+                if cancelled and cancelled[-1].cancel_reason:
+                    extra += f"Reason: {cancelled[-1].cancel_reason}\n"
+                refunded = sum((i.refund_amount for i in items), 0)
+                if refunded and event == "order_cancelled":
+                    extra += (
+                        f"Refund: Rs.{refunded:.2f} has been started to your original payment method. "
+                        "It usually reaches your account in 5-7 business days.\n"
+                    )
+                if extra:
+                    extra = "\n" + extra
+
             body = f"""
 Hello,
 
@@ -110,7 +124,7 @@ Shipping: ₹{order.shipping_fee:.2f}
 Total: ₹{order.total:.2f}
 
 Payment status: {order.payment_status}
-
+{extra}
 Thank you for shopping with SmartCart!
 
 The SmartCart Team

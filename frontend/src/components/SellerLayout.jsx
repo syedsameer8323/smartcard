@@ -5,7 +5,7 @@ import Logo from "./Logo.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { sellerApi } from "../services/shop.js";
 
-const NAV = [["/seller", "chart", "Overview", true], ["/seller/products", "box", "Products"], ["/seller/orders", "truck", "Orders"], ["/seller/coupons", "star", "Coupons"]];
+const NAV = [["/seller", "chart", "Overview", true], ["/seller/products", "box", "Products"], ["/seller/orders", "truck", "Orders"], ["/seller/offers", "percent", "Festival offers"], ["/seller/coupons", "star", "Coupons"]];
 const base64ToBytes = (base64) => { const padding = "=".repeat((4 - base64.length % 4) % 4); const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...raw].map((c) => c.charCodeAt(0))); };
 
 export default function SellerLayout() {

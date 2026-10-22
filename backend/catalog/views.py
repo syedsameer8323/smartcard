@@ -15,8 +15,9 @@ from rest_framework.views import APIView
 
 from users.permissions import IsSeller
 
-from .models import Category, Product
-from .serializers import CategorySerializer, ProductSerializer
+from .models import Category, FestivalOffer, Product
+from .pricing import annotate_effective_price, load_active_offers, on_offer_q
+from .serializers import CategorySerializer, FestivalOfferSerializer, ProductSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -53,21 +54,25 @@ class ProductListView(ListAPIView):
     authentication_classes = []
     serializer_class = ProductSerializer
     pagination_class = ProductPagination
-    SORTS = {"newest": "-created_at", "price_asc": "price", "price_desc": "-price", "name": "name"}
+    SORTS = {"newest": "-created_at", "price_asc": "effective_price", "price_desc": "-effective_price", "name": "name"}
 
     def get_queryset(self):
         p = self.request.query_params
-        qs = Product.objects.filter(is_active=True).select_related("seller", "category")
+        rules = load_active_offers()
+        qs = annotate_effective_price(Product.objects.filter(is_active=True).select_related("seller", "category"), rules)
         if q := p.get("q", "").strip():
             qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
         if category := p.get("category"):
             qs = qs.filter(category__slug=category)
+        # Price filters use what the customer actually pays (the festival price when a sale is live).
         if (lo := _decimal(p.get("min_price"))) is not None:
-            qs = qs.filter(price__gte=lo)
+            qs = qs.filter(effective_price__gte=lo)
         if (hi := _decimal(p.get("max_price"))) is not None:
-            qs = qs.filter(price__lte=hi)
+            qs = qs.filter(effective_price__lte=hi)
         if p.get("in_stock") == "true":
             qs = qs.filter(stock__gt=0)
+        if p.get("offer") == "true":
+            qs = qs.filter(on_offer_q(rules))
         return qs.order_by(self.SORTS.get(p.get("sort"), "-created_at"), "id")
 
 
@@ -153,3 +158,37 @@ class SellerImageUploadView(APIView):
             logger.exception("Cloudinary upload failed")
             return Response({"message": "Image upload failed. Please try again."}, status=503)
         return Response({"url": result["secure_url"]}, status=201)
+
+
+class SellerOfferViewSet(viewsets.ModelViewSet):
+    """Sellers create and manage festival sales on their own products only."""
+
+    permission_classes = [IsSeller]
+    serializer_class = FestivalOfferSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return FestivalOffer.objects.filter(seller=self.request.user).select_related("seller").prefetch_related("products")
+
+    def perform_create(self, serializer):
+        serializer.save(seller=self.request.user)
+
+
+class ActiveOffersView(APIView):
+    """Public: the festival sales running right now (powers the storefront banner)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        rules = load_active_offers()
+        groups = {}
+        for r in rules:  # best discount first
+            key = r.festival if r.festival != "custom" else f"custom:{r.name.lower()}"
+            g = groups.setdefault(key, {"festival": r.festival, "name": r.name, "max_discount_percent": f"{r.percent.normalize():f}",
+                                        "ends_at": r.ends_at, "sellers": set()})
+            g["sellers"].add(r.seller_id)
+            g["ends_at"] = max(g["ends_at"], r.ends_at)
+        offers = [{**g, "seller_count": len(g.pop("sellers"))} for g in groups.values()]
+        product_count = Product.objects.filter(is_active=True, stock__gt=0).filter(on_offer_q(rules)).count() if rules else 0
+        return Response({"product_count": product_count, "offers": offers})
