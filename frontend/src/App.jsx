@@ -21,9 +21,11 @@ import SellerProducts from "./pages/seller/Products.jsx";
 import SellerOrders from "./pages/seller/Orders.jsx";
 import SellerCoupons from "./pages/seller/Coupons.jsx";
 import SellerOffers from "./pages/seller/Offers.jsx";
+import FAQChatbot from "./components/FAQChatbot.jsx";
 
 export default function App() {
   return (
+    <>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route element={<GuestRoute />}>
@@ -61,5 +63,7 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    <FAQChatbot />
+    </>
   );
 }

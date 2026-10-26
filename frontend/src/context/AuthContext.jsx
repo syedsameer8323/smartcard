@@ -51,6 +51,14 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // "Continue with Google": the backend verifies the Google ID token and returns JWTs directly (no OTP).
+  const googleLogin = useCallback(async ({ credential, remember = true }) => {
+    const { data } = await authApi.googleLogin(credential);
+    tokenStorage.set(data.access, data.refresh, remember);
+    setUser(data.user);
+    return { user: data.user, created: !!data.created };
+  }, []);
+
   const resendLoginOTP = useCallback(async (challenge_id) => {
     const { data } = await authApi.resendLoginOTP({ challenge_id });
     return data;
@@ -75,12 +83,13 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     login,
     verifyLoginOTP,
+    googleLogin,
     resendLoginOTP,
     register,
     logout,
     getCurrentUser,
     refreshToken: refreshAccessToken,
-  }), [user, loading, login, verifyLoginOTP, resendLoginOTP, register, logout, getCurrentUser]);
+  }), [user, loading, login, verifyLoginOTP, googleLogin, resendLoginOTP, register, logout, getCurrentUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

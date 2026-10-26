@@ -14,151 +14,94 @@ import { useAsync } from "../../utils/hooks.js";
 import { money, shortDate } from "../../utils/format.js";
 import { CUSTOMER_CANCEL_REASONS } from "../../utils/cancel.js";
 import "../../styles/offers.css";
+import "../../styles/tracking.css";
 import { parseApiError } from "../../services/api.js";
 import { useToast } from "../../components/Toast.jsx";
 
 const TRACKING_STAGES = [
-  {
-    status: "pending",
-    label: "Order placed",
-    description: "Your order has been received.",
-    timestamp: null,
-  },
-  {
-    status: "confirmed",
-    label: "Order confirmed",
-    description: "The seller has confirmed your order.",
-    timestamp: "confirmed_at",
-  },
-  {
-    status: "processing",
-    label: "Processing",
-    description: "Your order is being prepared.",
-    timestamp: "processing_at",
-  },
-  {
-    status: "shipped",
-    label: "Shipped",
-    description: "Your order has been shipped.",
-    timestamp: "shipped_at",
-  },
-  {
-    status: "out_for_delivery",
-    label: "Out for delivery",
-    description: "Your order is on its way to you.",
-    timestamp: "out_for_delivery_at",
-  },
-  {
-    status: "delivered",
-    label: "Delivered",
-    description: "Your order has been delivered.",
-    timestamp: "delivered_at",
-  },
+  { status: "pending", label: "Placed", timestamp: null },
+  { status: "confirmed", label: "Confirmed", timestamp: "confirmed_at" },
+  { status: "processing", label: "Processing", timestamp: "processing_at" },
+  { status: "shipped", label: "Shipped", timestamp: "shipped_at" },
+  { status: "out_for_delivery", label: "Out for delivery", timestamp: "out_for_delivery_at" },
+  { status: "delivered", label: "Delivered", timestamp: "delivered_at" },
 ];
 
 const STATUS_ORDER = TRACKING_STAGES.map((stage) => stage.status);
 
 function formatTimestamp(value) {
   if (!value) return null;
-
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return null;
-
-  return date.toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
-function TrackingTimeline({ item, orderCreatedAt }) {
-  const cancelled = item.status === "cancelled";
-  const currentIndex = STATUS_ORDER.indexOf(item.status);
+/** Compact one-line progress tracker for a single order item, with optional dated details. */
+function ItemTracker({ item, orderCreatedAt }) {
+  const [open, setOpen] = useState(false);
+
+  if (item.status === "cancelled") {
+    const who = item.cancelled_by === "seller" ? "the seller" : "you";
+    return (
+      <div className="trk trk-cancelled">
+        <span className="trk-cancel-dot" aria-hidden="true">!</span>
+        <div>
+          <b>Cancelled{item.cancelled_by ? ` by ${who}` : ""}</b>
+          <small>
+            {item.cancel_reason ? `${item.cancel_reason} · ` : ""}
+            {Number(item.refund_amount) > 0
+              ? `Refund of ${money(item.refund_amount)} started (5–7 business days)`
+              : "This item will not be delivered"}
+          </small>
+        </div>
+      </div>
+    );
+  }
+
+  const currentIndex = Math.max(0, STATUS_ORDER.indexOf(item.status));
+  const stampFor = (stage, index) => (stage.timestamp ? item[stage.timestamp] : index === 0 ? orderCreatedAt : null);
+  const latest = formatTimestamp(stampFor(TRACKING_STAGES[currentIndex], currentIndex) || item.status_updated_at);
+  const reached = TRACKING_STAGES.slice(0, currentIndex + 1)
+    .map((stage, index) => ({ stage, when: formatTimestamp(stampFor(stage, index)) }))
+    .filter((entry) => entry.when);
 
   return (
-    <section className="tracking-section">
-      <h4 className="tracking-title">Order tracking</h4>
+    <div className="trk">
+      <ol className="trk-steps" aria-label={`Order progress: ${TRACKING_STAGES[currentIndex].label}`}>
+        {TRACKING_STAGES.map((stage, index) => {
+          const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "todo";
+          return (
+            <li key={stage.status} className={`trk-step is-${state}`} aria-current={state === "current" ? "step" : undefined}>
+              <span className="trk-dot" aria-hidden="true">{state === "done" ? "✓" : ""}</span>
+              <span className="trk-label">{stage.label}</span>
+            </li>
+          );
+        })}
+      </ol>
 
-      {cancelled ? (
-        <div className="tracking-cancelled">
-          <span className="tracking-marker">!</span>
+      <div className="trk-foot">
+        <span>
+          <b>{TRACKING_STAGES[currentIndex].label}</b>
+          {latest ? ` · ${latest}` : ""}
+        </span>
+        {reached.length > 1 && (
+          <button type="button" className="trk-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {open ? "Hide history" : "View history"}
+          </button>
+        )}
+      </div>
 
-          <div>
-            <strong>Order item cancelled</strong>
-            <p>
-              {item.cancelled_by
-                ? `Cancelled by ${item.cancelled_by === "seller" ? "the seller" : "you"}${item.cancel_reason ? ` · ${item.cancel_reason}` : ""}.`
-                : "This item will not proceed to delivery."}
-            </p>
-            {Number(item.refund_amount) > 0 && (
-              <p>Refund of {money(item.refund_amount)} started to your original payment method (5–7 business days).</p>
-            )}
-
-            {formatTimestamp(item.status_updated_at) && (
-              <small>
-                Updated {formatTimestamp(item.status_updated_at)}
-              </small>
-            )}
-          </div>
-        </div>
-      ) : (
-        <ol className="tracking-timeline">
-          {TRACKING_STAGES.map((stage, index) => {
-            const completed =
-              currentIndex >= 0 && index < currentIndex;
-
-            const current = index === currentIndex;
-
-            const timestamp = stage.timestamp
-              ? item[stage.timestamp]
-              : index === 0
-                ? orderCreatedAt
-                : null;
-
-            return (
-              <li
-                key={stage.status}
-                className={[
-                  "tracking-stage",
-                  completed ? "is-complete" : "",
-                  current ? "is-current" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <span
-                  className="tracking-marker"
-                  aria-hidden="true"
-                >
-                  {completed ? "✓" : index + 1}
-                </span>
-
-                <div className="tracking-stage-content">
-                  <strong>{stage.label}</strong>
-
-                  <p>{stage.description}</p>
-
-                  {timestamp && (
-                    <small>
-                      {formatTimestamp(timestamp)}
-                    </small>
-                  )}
-
-                  {current && (
-                    <span className="tracking-current-label">
-                      Current status
-                    </span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+      {open && (
+        <dl className="trk-history">
+          {reached.map(({ stage, when }) => (
+            <div key={stage.status}>
+              <dt>{stage.label}</dt>
+              <dd>{when}</dd>
+            </div>
+          ))}
+        </dl>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -365,42 +308,36 @@ export default function Orders() {
 
               <ul>
                 {o.items.map((item) => (
-                  <li key={item.id}>
-                    <div className="mini-img">
-                      <ProductImage
-                        product={{
-                          id: item.product,
-                          name: item.name,
-                          image_url: item.image_url,
-                        }}
-                      />
+                  <li key={item.id} className="trk-item">
+                    <div className="trk-item-row">
+                      <div className="mini-img">
+                        <ProductImage
+                          product={{
+                            id: item.product,
+                            name: item.name,
+                            image_url: item.image_url,
+                          }}
+                        />
+                      </div>
+
+                      <div className="grow">
+                        <span>{item.name}</span>
+
+                        <small className="muted">
+                          Qty {item.quantity} ·{" "}
+                          {money(item.price)} each
+                          {item.list_price && <span className="was">{money(item.list_price)}</span>}
+                          {item.offer_name && <span className="offer-chip">{item.offer_name}</span>}
+                        </small>
+                      </div>
+
+                      <StatusBadge status={item.status} />
                     </div>
 
-                    <div className="grow">
-                      <span>{item.name}</span>
-
-                      <small className="muted">
-                        Qty {item.quantity} ·{" "}
-                        {money(item.price)} each
-                        {item.list_price && <span className="was">{money(item.list_price)}</span>}
-                        {item.offer_name && <span className="offer-chip">{item.offer_name}</span>}
-                      </small>
-                    </div>
-
-                    <StatusBadge status={item.status} />
+                    <ItemTracker item={item} orderCreatedAt={o.created_at} />
                   </li>
                 ))}
               </ul>
-
-              <div className="order-tracking-list">
-                {o.items.map((item) => (
-                  <TrackingTimeline
-                    key={item.id}
-                    item={item}
-                    orderCreatedAt={o.created_at}
-                  />
-                ))}
-              </div>
 
               <footer className="order-footer-detail">
                 <div className="order-shipping-info">

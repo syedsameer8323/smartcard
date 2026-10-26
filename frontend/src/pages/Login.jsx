@@ -4,17 +4,19 @@ import AuthLayout from "../components/AuthLayout.jsx";
 import TextField from "../components/TextField.jsx";
 import PasswordInput from "../components/PasswordInput.jsx";
 import Spinner from "../components/Spinner.jsx";
+import GoogleButton from "../components/GoogleButton.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { parseApiError } from "../services/api.js";
 import { validateLogin } from "../utils/validation.js";
+import { ROLE_HOME } from "../routes/ProtectedRoute.jsx";
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "", remember: false });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -59,6 +61,17 @@ export default function Login() {
     }
   };
 
+  const onGoogle = async (credential) => {
+    setFormError("");
+    try {
+      const { user, created } = await googleLogin({ credential, remember: true });
+      toast.success(created ? `Welcome to SmartCart, ${user.name.split(" ")[0]}!` : `Welcome back, ${user.name.split(" ")[0]}!`);
+      navigate(location.state?.from?.pathname || ROLE_HOME[user.role], { replace: true });
+    } catch (error) {
+      setFormError(parseApiError(error).message);
+    }
+  };
+
   return (
     <AuthLayout
       title="Welcome Back"
@@ -81,6 +94,9 @@ export default function Login() {
           {submitting ? <><Spinner /> Sending verification code…</> : "Continue"}
         </button>
       </form>
+
+      <div className="auth-divider"><span>or</span></div>
+      <GoogleButton onCredential={onGoogle} onError={setFormError} />
     </AuthLayout>
   );
 }

@@ -1,7 +1,11 @@
 # this is responsible for handling the business logic for user authentication, registration, and password management in the backend of the e-commerce application
 
+import json
 import logging
 import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import timedelta
 
 from django.conf import settings
@@ -21,7 +25,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .models import LoginOTPChallenge, User
+from .models import LoginOTPChallenge, Role, User
 from .serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
@@ -308,6 +312,78 @@ class ResendLoginOTPView(PublicThrottledView):
             {"message": "A new verification code has been sent.", "expires_in": OTP_LIFETIME_MINUTES * 60},
             status=status.HTTP_200_OK,
         )
+
+
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+GOOGLE_ISSUERS = ("accounts.google.com", "https://accounts.google.com")
+
+
+def verify_google_id_token(credential):
+    """Validate a Google ID token with Google and return its claims, or None if invalid."""
+    client_id = getattr(settings, "GOOGLE_CLIENT_ID", "")
+    if not client_id or not credential:
+        return None
+    url = f"{GOOGLE_TOKENINFO_URL}?{urllib.parse.urlencode({'id_token': credential})}"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            claims = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        return None
+    if claims.get("aud") != client_id:
+        return None
+    if claims.get("iss") not in GOOGLE_ISSUERS:
+        return None
+    if str(claims.get("email_verified")).lower() != "true":
+        return None
+    if not claims.get("email"):
+        return None
+    return claims
+
+
+class GoogleLoginView(PublicThrottledView):
+    """'Continue with Google'. Google has already verified the email, so no OTP step is needed."""
+
+    throttle_scope = "google_login"
+
+    def post(self, request):
+        if not getattr(settings, "GOOGLE_CLIENT_ID", ""):
+            return Response(
+                {"message": "Google sign-in is not configured on the server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        credential = request.data.get("credential")
+        claims = verify_google_id_token(credential if isinstance(credential, str) else "")
+        if claims is None:
+            return Response(
+                {"message": "We could not verify your Google account. Please try again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        email = claims["email"].strip().lower()
+        user = User.objects.filter(email__iexact=email).first()
+        created = False
+
+        if user is None:
+            name = (claims.get("name") or email.split("@")[0])[:150]
+            # No password is ever set: the account is Google-only until the user uses "Forgot password".
+            user = User.objects.create_user(email=email, password=None, name=name, role=Role.CUSTOMER)
+            created = True
+        elif not user.is_active:
+            return Response(
+                {"message": "This account has been deactivated. Please contact support."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        elif user.role == Role.ADMIN:
+            return Response(
+                {"message": "Administrator accounts must sign in with email, password and verification code."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if created:
+            send_account_email(user)
+        payload = issue_tokens(user)
+        return Response({"message": "Login successful.", "created": created, **payload}, status=status.HTTP_200_OK)
 
 
 class RefreshView(TokenRefreshView):

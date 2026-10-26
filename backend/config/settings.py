@@ -158,6 +158,7 @@ REST_FRAMEWORK = {
         "otp_verify": "10/hour",
         "otp_resend": "5/hour",
         "image_upload": "60/hour",
+        "google_login": "20/min",
     },
 }
 
@@ -216,6 +217,9 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 # =========================================================
 # FRONTEND URL
 # =========================================================
+
+# Google Sign-In (OAuth client ID from Google Cloud Console; same value as VITE_GOOGLE_CLIENT_ID)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
 FRONTEND_URL = os.environ.get(
     "FRONTEND_URL",

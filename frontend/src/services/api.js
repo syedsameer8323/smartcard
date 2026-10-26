@@ -54,7 +54,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    const isAuthCall = ["/auth/login/", "/auth/login/verify-otp/", "/auth/login/resend-otp/", "/auth/refresh/"]
+    const isAuthCall = ["/auth/login/", "/auth/login/verify-otp/", "/auth/login/resend-otp/", "/auth/google/", "/auth/refresh/"]
       .some((url) => original?.url?.includes(url));
     if (error.response?.status === 401 && !original?._retried && !isAuthCall) {
       original._retried = true;
@@ -98,6 +98,7 @@ export function parseApiError(error) {
 export const authApi = {
   register: (payload) => api.post("/auth/register/", payload),
   login: (payload) => api.post("/auth/login/", payload),
+  googleLogin: (credential) => api.post("/auth/google/", { credential }),
   verifyLoginOTP: (payload) => api.post("/auth/login/verify-otp/", payload),
   resendLoginOTP: (payload) => api.post("/auth/login/resend-otp/", payload),
   logout: (refresh) => api.post("/auth/logout/", { refresh }),
