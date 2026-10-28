@@ -251,7 +251,7 @@ export default function Checkout() {
         const loaded = await loadRazorpay();
         if (!loaded) throw new Error("Razorpay checkout could not load. Your order was created; retry payment from your orders once available.");
         const { data: payment } = await ordersApi.createPayment(data.order.id);
-        const rzp = new window.Razorpay({ key: payment.key_id, amount: payment.amount, currency: payment.currency, name: "SmartCart", description: `Order ${payment.order_code}`, order_id: payment.razorpay_order_id, prefill: { name: form.shipping_name, email: form.email, contact: form.phone }, theme: { color: "#4f46e5" },
+        const rzp = new window.Razorpay({ key: payment.key_id, amount: payment.amount, currency: payment.currency, name: "SmartCart", description: `Order ${payment.order_code}`, order_id: payment.razorpay_order_id, prefill: { name: form.shipping_name, email: form.email, contact: form.phone }, theme: { color: "#D9341A" },
           handler: async (response) => { try { await ordersApi.verifyPayment(data.order.id, response); await refreshCart(); navigate("/orders", { replace: true, state: { placed: data.order.code, paid: true } }); } catch (err) { toast.error(parseApiError(err).message || "Payment verification failed. Check your order status before retrying."); await refreshCart(); navigate("/orders", { replace: true, state: { placed: data.order.code } }); setBusy(false); } },
           modal: { ondismiss: async () => { await ordersApi.paymentFailed(data.order.id, { reason: "checkout_closed" }).catch(() => {}); setBusy(false); navigate("/orders", { replace: true, state: { placed: data.order.code } }); toast.error("Payment was not completed. You can retry from My orders."); } }
         });

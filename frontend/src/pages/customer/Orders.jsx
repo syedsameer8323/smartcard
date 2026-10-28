@@ -192,7 +192,7 @@ export default function Orders() {
         },
 
         theme: {
-          color: "#4f46e5",
+          color: "#D9341A",
         },
 
         handler: async (response) => {

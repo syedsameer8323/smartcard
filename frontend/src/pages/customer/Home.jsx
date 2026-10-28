@@ -1,245 +1,142 @@
 import { Link } from "react-router-dom";
-import Icon from "../../components/Icon.jsx";
 import ProductCard from "../../components/ProductCard.jsx";
+import HeroSection from "../../components/HeroSection.jsx";
+import CategoryRail from "../../components/CategoryRail.jsx";
+import BentoTile from "../../components/BentoTile.jsx";
+import Scroller from "../../components/Scroller.jsx";
+import Countdown from "../../components/Countdown.jsx";
+import TrustStrip from "../../components/TrustStrip.jsx";
+import SectionHead from "../../components/SectionHead.jsx";
+import Reveal from "../../components/Reveal.jsx";
 import { ProductGridSkeleton, Skeleton } from "../../components/ui.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { useShop } from "../../context/ShopContext.jsx";
 import { catalogApi } from "../../services/shop.js";
 import { useAsync } from "../../utils/hooks.js";
-import { festivalOf, endsIn, percentText } from "../../utils/offers.js";
+import { percentText } from "../../utils/offers.js";
+import { categoryPhoto, hasImage, useCategoryShowcase } from "../../utils/storefront.js";
 import "../../styles/offers.css";
 
-function Section({ title, subtitle, to, children }) {
-  return (
-    <section className="section-block">
-      <div className="section-head">
-        <div>
-          <h2>{title}</h2>
-          {subtitle && <p className="muted">{subtitle}</p>}
-        </div>
-        {to && (
-          <Link to={to} className="link-arrow">
-            View all <Icon name="chevron" size={16} />
-          </Link>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-const QUICK_ACTIONS = [
-  {
-    icon: "▦",
-    title: "Browse products",
-    description: "Explore the full collection",
-    to: "/shop",
-    tone: "indigo",
-  },
-  {
-    icon: "▣",
-    title: "My orders",
-    description: "Check order status",
-    to: "/orders",
-    tone: "blue",
-  },
-  {
-    icon: "♡",
-    title: "My wishlist",
-    description: "Find your saved favourites",
-    to: "/wishlist",
-    tone: "rose",
-  },
-  {
-    icon: "🛒",
-    title: "My cart",
-    description: "Continue where you left off",
-    to: "/cart",
-    tone: "violet",
-  },
-];
+const listOf = (res) => res.data?.results || res.data || [];
 
 export default function Home() {
   const { user } = useAuth();
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const { wishlist } = useShop();
   const firstName = user?.name?.trim()?.split(/\s+/)[0] || "there";
 
-  const cats = useAsync(() => catalogApi.categories(), []);
+  const cats = useCategoryShowcase();
   const offers = useAsync(() => catalogApi.activeOffers(), []);
   const hasOffers = (offers.data?.offers || []).length > 0;
   const deals = useAsync(
     () => (hasOffers ? catalogApi.products({ offer: "true", in_stock: "true", page_size: 4 }) : Promise.resolve({ data: { results: [] } })),
     [hasOffers],
   );
+  const fresh = useAsync(() => catalogApi.products({ sort: "newest", page_size: 10 }), []);
+  const budget = useAsync(() => catalogApi.products({ sort: "price_asc", max_price: 5000, in_stock: "true", page_size: 4 }), []);
+
   const topOffer = offers.data?.offers?.[0];
-  const topFest = topOffer ? festivalOf(topOffer.festival) : null;
-  const fresh = useAsync(
-    () => catalogApi.products({ sort: "newest", page_size: 8 }),
-    []
-  );
-  const budget = useAsync(
-    () =>
-      catalogApi.products({
-        sort: "price_asc",
-        max_price: 5000,
-        in_stock: "true",
-        page_size: 4,
-      }),
-    []
-  );
+  const dealItems = deals.data?.results || [];
+  const freshItems = listOf(fresh);
+  const budgetItems = listOf(budget);
+  const categories = cats.data || [];
+  const bigCategory = [...categories].sort((a, b) => b.count - a.count).find((c) => categoryPhoto(c));
+  const total = fresh.data?.count;
 
   return (
     <div className="customer-home">
-      <section className="customer-welcome">
-        <div className="customer-welcome-copy">
-          <span className="customer-overline">YOUR SMARTCART</span>
-          <h1>
-            {greeting}, <span>{firstName}</span>.
-          </h1>
-          <p>
-            Your shopping space, all in one place. Pick up where you left off
-            or discover something new today.
-          </p>
-          <div className="customer-welcome-actions">
-            <Link to="/shop" className="btn btn-primary btn-lg">
-              Browse products <span aria-hidden="true">→</span>
-            </Link>
-            <Link to="/orders" className="customer-secondary-link">
-              Track an order
-            </Link>
-          </div>
-        </div>
-        <div className="customer-welcome-note">
-          <span className="customer-welcome-sparkle" aria-hidden="true">
-            ✦
-          </span>
-          <div>
-            <strong>A little something for you</strong>
-            <p>Thoughtful finds. Simple shopping.</p>
-          </div>
+      <HeroSection
+        eyebrow={`Hey ${firstName}, welcome back`}
+        title={<>Everything you love.<br /><span className="grad-text">Delivered free.</span></>}
+        text="Discover everyday essentials, technology, fashion, beauty and more — from sellers we trust, tracked every step of the way."
+        primary={{ label: "Start exploring", to: "/shop" }}
+        secondary={{ label: "My orders", to: "/orders" }}
+        products={freshItems}
+        offer={topOffer}
+        facts={[
+          ...(total ? [[total, "products"]] : []),
+          ...(categories.length ? [[categories.length, "categories"]] : []),
+          ["₹0", "shipping"],
+        ]}
+      />
+
+      <section className="sec" id="collections">
+        <div className="container">
+          <Reveal>
+            <SectionHead eyebrow="Categories" title="Browse the aisles" text="Jump straight to what you need." to="/shop" linkLabel="All products" />
+          </Reveal>
+          {cats.loading && !cats.data ? <Skeleton className="sk-rail" />
+            : categories.length ? <Reveal delay={80}><CategoryRail categories={categories} /></Reveal>
+            : <div className="inline-empty">Categories will appear here when they are available.</div>}
         </div>
       </section>
 
-      {topOffer && (
-        <section className={`festival-banner fest-${topFest.key}`} aria-label="Festival offers">
-          <span className="festival-emoji" aria-hidden="true">{topFest.emoji}</span>
-          <div className="festival-copy">
-            <h2>{topOffer.name} is live!</h2>
-            <p>
-              Up to {percentText(topOffer.max_discount_percent)} off on {offers.data.product_count} product
-              {offers.data.product_count === 1 ? "" : "s"} · {endsIn(topOffer.ends_at)}
-            </p>
+      <section className="sec sec-tight">
+        <div className="container">
+          <Reveal>
+            <div className="bento-grid">
+              <BentoTile area="a" to="/shop?sort=newest" tone="photo" product={freshItems.find(hasImage)} eyebrow="New arrivals" title="Just landed" text={total ? `${total} products and counting` : "Fresh from our sellers"} />
+              {topOffer ? (
+                <BentoTile area="b" to="/shop?offer=true" tone="hot" eyebrow={topOffer.name} title={`Up to ${percentText(topOffer.max_discount_percent)} off`}>
+                  <Countdown to={topOffer.ends_at} />
+                </BentoTile>
+              ) : (
+                <BentoTile area="b" to="/shop" tone="hot" eyebrow="Free shipping" title="Shipping is on us" text="Every order, no minimum." />
+              )}
+              <BentoTile area="c" to="/shop?max_price=5000&sort=price_asc" tone="photo" product={budgetItems.find(hasImage)} eyebrow="Budget picks" title="Under ₹5,000" />
+              {bigCategory
+                ? <BentoTile area="d" to={`/shop?category=${bigCategory.slug}`} tone="photo" product={categoryPhoto(bigCategory)} eyebrow="Biggest category" title={bigCategory.name} />
+                : <BentoTile area="d" to="/shop" tone="glass" eyebrow="Explore" title="All products" />}
+              <BentoTile area="e" to="/wishlist" tone="glass" eyebrow="Your wishlist" title={wishlist.length ? `${wishlist.length} saved` : "Nothing saved yet"} text={wishlist.length ? "Pick up where you left off." : "Tap the heart on anything you like."} />
+              <BentoTile area="f" to="/orders" tone="cyan" eyebrow="Orders" title="Track your orders" text="Follow every delivery, step by step." />
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="sec">
+        <div className="container">
+          <Reveal><SectionHead eyebrow="Fresh drops" title="New arrivals" text="The latest from our sellers." to="/shop?sort=newest" /></Reveal>
+          {fresh.loading && !fresh.data ? <ProductGridSkeleton count={4} />
+            : freshItems.length ? <Reveal delay={80}><Scroller label="New arrivals" className="pscroll">{freshItems.map((p) => <ProductCard key={p.id} product={p} />)}</Scroller></Reveal>
+            : <div className="inline-empty">New products will appear here as sellers add them. <Link to="/shop">Browse the store →</Link></div>}
+        </div>
+      </section>
+
+      {topOffer && dealItems.length > 0 && (
+        <section className="sec sec-tight">
+          <div className="container">
+            <Reveal>
+              <div className="deal-frame">
+                <div className="deal-head">
+                  <div>
+                    <span className="kicker">Limited time</span>
+                    <h2>{topOffer.name}</h2>
+                    <p>Up to {percentText(topOffer.max_discount_percent)} off on {offers.data.product_count} product{offers.data.product_count === 1 ? "" : "s"}.</p>
+                  </div>
+                  <div className="deal-side">
+                    <Countdown to={topOffer.ends_at} />
+                    <Link to="/shop?offer=true" className="btn btn-white">Shop all deals</Link>
+                  </div>
+                </div>
+                <div className="product-grid">{dealItems.map((p) => <ProductCard key={p.id} product={p} />)}</div>
+              </div>
+            </Reveal>
           </div>
-          <Link to="/shop?offer=true" className="btn btn-lg">Shop festival deals →</Link>
         </section>
       )}
 
-      <section className="customer-quick-section" aria-labelledby="quick-actions-title">
-        <div className="customer-section-intro">
-          <div>
-            <span className="customer-overline">SHORTCUTS</span>
-            <h2 id="quick-actions-title">Your shopping, at a glance</h2>
-          </div>
-          <p>Jump straight to what you need.</p>
-        </div>
-        <div className="customer-quick-grid">
-          {QUICK_ACTIONS.map((action) => (
-            <Link
-              key={action.title}
-              to={action.to}
-              className="customer-quick-card"
-            >
-              <span
-                className={`customer-quick-icon ${action.tone}`}
-                aria-hidden="true"
-              >
-                {action.icon}
-              </span>
-              <span className="customer-quick-copy">
-                <strong>{action.title}</strong>
-                <small>{action.description}</small>
-              </span>
-              <span className="customer-quick-arrow" aria-hidden="true">
-                ↗
-              </span>
-            </Link>
-          ))}
+      <section className="sec">
+        <div className="container">
+          <Reveal><SectionHead eyebrow="Easy on the wallet" title="Great under ₹5,000" text="In-stock picks that won’t stretch your budget." to="/shop?max_price=5000&sort=price_asc" /></Reveal>
+          {budget.loading && !budget.data ? <ProductGridSkeleton count={4} />
+            : budgetItems.length ? <Reveal delay={80}><div className="product-grid">{budgetItems.map((p) => <ProductCard key={p.id} product={p} />)}</div></Reveal>
+            : <div className="inline-empty">Budget-friendly picks will appear here when matching products are available.</div>}
         </div>
       </section>
 
-      {hasOffers && (deals.data?.results || []).length > 0 && (
-        <Section title={`${topFest.emoji} Festival deals`} subtitle="Limited-time prices from our sellers" to="/shop?offer=true">
-          <div className="product-grid">
-            {deals.data.results.map((product) => <ProductCard key={product.id} product={product} />)}
-          </div>
-        </Section>
-      )}
-
-      <Section title="Shop by category" subtitle="Find your way to something good">
-        {cats.loading && !cats.data ? (
-          <Skeleton className="sk-row" />
-        ) : (cats.data || []).length ? (
-          <div className="cat-row">
-            {(cats.data || []).map((category) => (
-              <Link
-                key={category.id}
-                to={`/shop?category=${category.slug}`}
-                className="cat-tile"
-              >
-                <span>{category.icon || "✦"}</span>
-                {category.name}
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="customer-inline-empty">
-            Categories will appear here when they are available.
-          </div>
-        )}
-      </Section>
-
-      <Section
-        title="New arrivals"
-        subtitle="Fresh from our sellers"
-        to="/shop?sort=newest"
-      >
-        {fresh.loading && !fresh.data ? (
-          <ProductGridSkeleton count={4} />
-        ) : (fresh.data?.results || fresh.data || []).length ? (
-          <div className="product-grid">
-            {(fresh.data?.results || fresh.data || []).map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        ) : (
-          <div className="customer-inline-empty">
-            New products will appear here when sellers add them to SmartCart.
-            <Link to="/shop">Browse the store →</Link>
-          </div>
-        )}
-      </Section>
-
-      <Section
-        title="Great under ₹5,000"
-        subtitle="Budget-friendly picks in stock"
-        to="/shop?max_price=5000&sort=price_asc"
-      >
-        {budget.loading && !budget.data ? (
-          <ProductGridSkeleton count={4} />
-        ) : (budget.data?.results || budget.data || []).length ? (
-          <div className="product-grid">
-            {(budget.data?.results || budget.data || []).map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        ) : (
-          <div className="customer-inline-empty">
-            Budget-friendly picks will appear here when matching products are
-            available.
-          </div>
-        )}
-      </Section>
+      <section className="sec">
+        <div className="container"><Reveal><TrustStrip /></Reveal></div>
+      </section>
     </div>
   );
 }

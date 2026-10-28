@@ -3,11 +3,11 @@
 /* festival colour themes: --fa / --fb are the two gradient colours */
 .fest-diwali{--fa:#f59e0b;--fb:#ea580c}
 .fest-dussehra{--fa:#ef4444;--fb:#f97316}
-.fest-navratri{--fa:#ec4899;--fb:#8b5cf6}
-.fest-holi{--fa:#d946ef;--fb:#06b6d4}
+.fest-navratri{--fa:#ec4899;--fb:var(--accent)}
+.fest-holi{--fa:var(--accent);--fb:var(--accent)}
 .fest-eid{--fa:#10b981;--fb:#0d9488}
 .fest-christmas{--fa:#dc2626;--fb:#15803d}
-.fest-new_year{--fa:#6366f1;--fb:#a855f7}
+.fest-new_year{--fa:var(--accent);--fb:var(--accent)}
 .fest-republic_day,.fest-independence_day{--fa:#f97316;--fb:#16a34a}
 .fest-raksha_bandhan{--fa:#f43f5e;--fb:#fb923c}
 .fest-custom{--fa:var(--brand);--fb:var(--brand-2)}
@@ -37,13 +37,13 @@
 
 /* storefront festival banner */
 .festival-banner{display:flex;align-items:center;gap:1.1rem;margin:0 0 1.6rem;padding:1.3rem 1.5rem;border-radius:18px;color:#fff;background:linear-gradient(120deg,var(--fa),var(--fb));box-shadow:0 14px 34px -16px var(--fb);position:relative;overflow:hidden}
-.festival-banner::after{content:"";position:absolute;right:-40px;top:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.12)}
+.festival-banner::after{content:"";position:absolute;right:-40px;top:-60px;width:220px;height:220px;border-radius:50%;background:color-mix(in srgb, var(--card) 12%, transparent)}
 .festival-emoji{font-size:2.6rem;line-height:1;filter:drop-shadow(0 4px 6px rgba(0,0,0,.2))}
 .festival-copy{flex:1;min-width:0;position:relative;z-index:1}
 .festival-copy h2{margin:0 0 .15rem;font-size:clamp(1.15rem,2.4vw,1.6rem);color:#fff}
 .festival-copy p{margin:0;opacity:.95;font-size:.95rem}
-.festival-banner .btn{position:relative;z-index:1;white-space:nowrap;background:#fff;color:#111827;font-weight:700}
-.festival-banner .btn:hover{background:#f8fafc}
+.festival-banner .btn{position:relative;z-index:1;white-space:nowrap;background:var(--card);color:var(--ink);font-weight:700}
+.festival-banner .btn:hover{background:var(--bg)}
 @media (max-width:640px){.festival-banner{flex-wrap:wrap}.festival-banner .btn{width:100%;justify-content:center}}
 
 /* cancel dialog */
@@ -51,21 +51,21 @@
 .modal-body label{display:block;font-weight:650;font-size:.85rem;margin-bottom:.3rem}
 .modal-body textarea.ctl{min-height:70px}
 .refund-box{padding:.7rem .9rem;border-radius:10px;font-size:.88rem;line-height:1.45}
-.refund-box.paid{background:var(--ok-bg);color:#065f46}
+.refund-box.paid{background:var(--ok-bg);color:var(--ok-text)}
 .refund-box.unpaid{background:var(--bg-alt);color:var(--muted)}
 .order-extra{display:flex;flex-wrap:wrap;gap:.35rem .9rem;margin-top:.25rem}
 .order-extra .good{color:var(--ok);font-weight:650}
-.offer-chip{display:inline-block;margin-left:.4rem;padding:.05rem .45rem;border-radius:999px;font-size:.7rem;font-weight:700;color:#9a3412;background:#ffedd5}
+.offer-chip{display:inline-block;margin-left:.4rem;padding:.05rem .45rem;border-radius:999px;font-size:.7rem;font-weight:700;color:var(--err-text);background:var(--warn-bg)}
 .was{color:var(--muted);text-decoration:line-through;margin-left:.3rem}
 .cancel-meta{display:block;margin-top:.2rem;color:var(--muted);font-size:.78rem;max-width:220px;white-space:normal}
 
 /* seller: festival offers page */
 .offers-page .offer-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.9rem;margin-bottom:1.4rem}
-.offer-stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1rem 1.1rem;box-shadow:var(--shadow-sm)}
+.offer-stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.1rem;box-shadow:var(--shadow-sm)}
 .offer-stat span{display:block;color:var(--muted);font-size:.8rem;font-weight:600}
 .offer-stat strong{font-size:1.6rem}
 .offer-list{display:grid;gap:.9rem}
-.offer-card{display:flex;align-items:center;gap:1rem;background:#fff;border:1px solid var(--line);border-radius:16px;padding:1rem 1.15rem;box-shadow:var(--shadow-sm)}
+.offer-card{display:flex;align-items:center;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1rem 1.15rem;box-shadow:var(--shadow-sm)}
 .offer-tile{flex:none;width:58px;height:58px;border-radius:15px;display:grid;place-items:center;font-size:1.8rem;background:linear-gradient(135deg,var(--fa),var(--fb))}
 .offer-main{flex:1;min-width:0}
 .offer-main h3{margin:0 0 .15rem;font-size:1.02rem;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem}
@@ -77,22 +77,22 @@
 .offer-badge{display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .6rem;border-radius:999px;font-size:.72rem;font-weight:700}
 .offer-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .offer-badge.live{background:var(--ok-bg);color:var(--ok)}
-.offer-badge.scheduled{background:#eff6ff;color:#2563eb}
+.offer-badge.scheduled{background:var(--accent-soft);color:var(--accent-text)}
 .offer-badge.ended{background:var(--bg-alt);color:var(--muted)}
-.offer-badge.paused{background:#fffbeb;color:#d97706}
+.offer-badge.paused{background:var(--warn-bg);color:var(--warn-text)}
 @media (max-width:760px){.offer-card{flex-wrap:wrap}.offer-actions{width:100%;justify-content:flex-start}}
 
 /* seller: offer form */
 .fest-chips{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1rem}
-.fest-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .75rem;border-radius:999px;border:1px solid var(--line);background:#fff;font:600 .82rem Inter,sans-serif;cursor:pointer;color:var(--ink)}
+.fest-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .75rem;border-radius:999px;border:1px solid var(--line);background:var(--card);font:600 .82rem var(--font-body);cursor:pointer;color:var(--ink)}
 .fest-chip:hover{border-color:var(--brand)}
 .fest-chip.selected{color:#fff;border-color:transparent;background:linear-gradient(120deg,var(--fa),var(--fb))}
 .pct-row{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.5rem}
-.pct-chip{padding:.25rem .65rem;border-radius:8px;border:1px solid var(--line);background:#fff;font:600 .8rem Inter,sans-serif;cursor:pointer}
-.pct-chip.selected{border-color:var(--brand);background:#f5f3ff;color:var(--brand-dark)}
+.pct-chip{padding:.25rem .65rem;border-radius:8px;border:1px solid var(--line);background:var(--card);font:600 .8rem var(--font-body);cursor:pointer}
+.pct-chip.selected{border-color:var(--brand);background:var(--accent-soft);color:var(--brand-dark)}
 .scope-opts{display:grid;gap:.5rem;margin:.3rem 0 .8rem}
 .scope-opt{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .85rem;border:1px solid var(--line);border-radius:12px;cursor:pointer}
-.scope-opt.selected{border-color:var(--brand);background:#f7f7ff}
+.scope-opt.selected{border-color:var(--brand);background:var(--accent-soft)}
 .scope-opt input{margin-top:.25rem;accent-color:var(--brand)}
 .scope-opt small{display:block;color:var(--muted)}
 .pick-list{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:.5rem}
@@ -100,7 +100,7 @@
 .pick-row:last-child{border-bottom:0}
 .pick-row input{accent-color:var(--brand)}
 .pick-row span:last-child{margin-left:auto;color:var(--muted)}
-.price-preview{display:flex;align-items:center;gap:.7rem;padding:.8rem .95rem;border-radius:12px;background:var(--ok-bg);color:#065f46;font-size:.9rem;margin:.4rem 0 1rem}
+.price-preview{display:flex;align-items:center;gap:.7rem;padding:.8rem .95rem;border-radius:12px;background:var(--ok-bg);color:var(--ok-text);font-size:.9rem;margin:.4rem 0 1rem}
 .price-preview s{color:var(--muted)}
 .price-preview b{font-size:1.05rem}
 .offer-mini{display:block;color:var(--ok);font-size:.75rem;font-weight:650}

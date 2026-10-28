@@ -1,5 +1,5 @@
 import { money } from "../utils/format.js";
-import { festivalOf, percentText } from "../utils/offers.js";
+import { percentText } from "../utils/offers.js";
 import "../styles/offers.css";
 
 /** The price a customer pays, with the list price crossed out while a festival sale is live. */
@@ -16,13 +16,12 @@ export default function PriceTag({ product, size = "md" }) {
   );
 }
 
-/** Small festival ribbon for product images, e.g. "🪔 15% OFF". */
+/** Discount chip over product imagery, e.g. "-15%". */
 export function OfferBadge({ product }) {
   if (!product.offer || !product.discount_percent) return null;
-  const fest = festivalOf(product.offer.festival);
   return (
-    <span className={`tag tag-offer fest-${fest.key}`} title={product.offer.name}>
-      {fest.emoji} {percentText(product.discount_percent)} OFF
+    <span className="tag tag-offer" title={product.offer.name}>
+      −{percentText(product.discount_percent)}
     </span>
   );
 }

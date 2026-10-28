@@ -3,6 +3,6 @@
 .auth-divider::before,.auth-divider::after{content:"";flex:1;height:1px;background:var(--line)}
 .google-wrap{position:relative;min-height:44px;display:flex;justify-content:center}
 .google-holder{width:100%;display:flex;justify-content:center;min-height:44px}
-.google-skeleton{position:absolute;inset:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.88rem;background:#fff;pointer-events:none}
+.google-skeleton{position:absolute;inset:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.88rem;background:var(--card);pointer-events:none}
 .google-note{font-size:.82rem;color:var(--muted);background:var(--bg-alt);border:1px dashed var(--line);border-radius:10px;padding:.7rem .9rem;margin:0}
-.google-note code{background:#fff;border:1px solid var(--line);border-radius:5px;padding:0 .3rem;font-size:.78rem}
+.google-note code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:0 .3rem;font-size:.78rem}
