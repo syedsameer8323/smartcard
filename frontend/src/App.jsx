@@ -21,7 +21,7 @@ import SellerProducts from "./pages/seller/Products.jsx";
 import SellerOrders from "./pages/seller/Orders.jsx";
 import SellerCoupons from "./pages/seller/Coupons.jsx";
 import SellerOffers from "./pages/seller/Offers.jsx";
-import FAQChatbot from "./components/FAQChatbot.jsx";
+import AIShoppingAssistant from "./components/AIShoppingAssistant.jsx";
 
 export default function App() {
   return (
@@ -63,7 +63,7 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    <FAQChatbot />
+    <AIShoppingAssistant />
     </>
   );
 }

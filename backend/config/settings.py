@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "users",
     "catalog",
     "shop",
+    "assistant",  
 ]
 
 # =========================================================
@@ -159,6 +160,8 @@ REST_FRAMEWORK = {
         "otp_resend": "5/hour",
         "image_upload": "60/hour",
         "google_login": "20/min",
+        "assistant_chat": "30/min",       
+        "assistant_chat_anon": "12/min",
     },
 }
 
@@ -241,6 +244,17 @@ RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_ADMIN_EMAIL = os.environ.get("VAPID_ADMIN_EMAIL", "")
+
+
+# =========================================================
+# AI SHOPPING ASSISTANT (OpenAI-compatible)
+# Works with OpenAI, Groq, OpenRouter, Together, etc.
+# Leave LLM_API_KEY empty to use the keyword + DB fallback.
+# =========================================================
+
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")  # e.g. https://api.groq.com/openai/v1
+LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
 
 # =========================================================
 # INTERNATIONALIZATION

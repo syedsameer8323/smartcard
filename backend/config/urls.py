@@ -6,4 +6,5 @@ urlpatterns = [
     path("api/auth/", include("users.urls")),
     path("api/", include("catalog.urls")),
     path("api/", include("shop.urls")),
+    path("api/", include("assistant.urls")),  # AI Shopping Assistant
 ]
