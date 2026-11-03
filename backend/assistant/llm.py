@@ -12,6 +12,7 @@ from typing import Any
 from django.conf import settings
 
 from .tools import TOOL_SCHEMAS, run_tool
+from .intent import parse_intent, build_context_update, contextual_suggestions
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,16 @@ SYSTEM_PROMPT = """You are SmartCart AI, the intelligent shopping assistant for 
 
 Your capabilities:
 - Search and recommend real products from the live catalog (never invent products, prices, or stock).
+- For ANY product request (e.g. healthy food, gifts, fitness, beauty, budget finds) you MUST call search_products or search_by_offer — do not answer from memory.
+- Map natural language to tools: "healthy" → search query keywords like rice, oats, protein, organic; "gift" → search popular items; always pass useful query strings.
 - Help with cart, wishlist, and order status for logged-in customers.
-- Suggest complementary items, cheaper alternatives, and similar products using recommend_related.
-- Compare products the customer has already seen in this chat using compare_products with their numeric ids.
+- Suggest complementary items, cheaper alternatives, and similar products using recommend_related with product_ids from this chat.
+- Compare products the customer has already seen using compare_products with their numeric ids.
 - Explain offers, shipping, payments, refunds, and cancellation policies.
 
 Hard rules:
 1. ALWAYS call tools for any product, cart, wishlist, order, offer, or category data. Never fabricate.
-2. When tools return products, write a short friendly summary only. Do NOT repeat full product lists, tables, markdown tables, raw image URLs, or markdown product links — the UI already shows product cards with images and prices.
+2. When tools return products, write ONE short intro sentence only (e.g. 'Here are fitness products under ₹5,000.'). Do NOT list product names, prices, tables, markdown, or URLs — the UI shows product cards.
 3. Never use markdown tables. Prefer short paragraphs or simple bullet lines starting with "• ".
 4. Currency is Indian Rupees (₹). Format prices like ₹59,999.
 5. Read the AUTH STATUS line carefully. If the user IS authenticated, call get_cart / get_wishlist / get_orders immediately when asked — do NOT ask them to sign in. If they are a guest, then ask them to sign in for cart/orders/wishlist.
@@ -214,34 +217,241 @@ def _strip_noisy_markdown(text: str) -> str:
     return text.strip()
 
 
+
+
+
+def resolve_intent_with_tools(intent, user=None, product_ids=None, domain=None):
+    """
+    Deterministic tool calls ONLY for structured intents (cart, orders, named offers,
+    chip follow-ups with product ids, clear budget+theme searches).
+
+    Open-ended discovery ("healthy products", "gift ideas") returns handled=False
+    so the LLM can reason and call tools intelligently.
+    """
+    products, related, reply = [], [], None
+    pids = list(product_ids or [])
+    kind = intent.kind
+
+    # --- Account data: always deterministic ---
+    if kind == "cart":
+        result = run_tool("get_cart", {}, user=user)
+        if result.get("error"):
+            reply = "Please sign in to view your cart."
+        else:
+            products = result.get("items") or []
+            total = result.get("cart_total", 0)
+            reply = (
+                f"You have {len(products)} item(s) in your cart (total ₹{total:,.0f})."
+                if products else "Your cart is empty. Looking for recommendations?"
+            )
+        return {"reply": reply, "products": products, "related": related, "handled": True}
+
+    if kind == "wishlist":
+        result = run_tool("get_wishlist", {}, user=user)
+        if result.get("error"):
+            reply = "Please sign in to view your wishlist."
+        else:
+            products = result.get("items") or []
+            reply = (
+                f"You have {len(products)} item(s) in your wishlist."
+                if products else "Your wishlist is empty."
+            )
+        return {"reply": reply, "products": products, "related": related, "handled": True}
+
+    if kind == "orders":
+        result = run_tool("get_orders", {}, user=user)
+        if result.get("error"):
+            reply = "Please sign in to view your orders."
+        else:
+            orders = result.get("orders") or []
+            if not orders:
+                reply = "You have no orders yet."
+            else:
+                lines = [f"• {o['code']} — ₹{o['total']:,.0f} ({o['payment_status']})" for o in orders[:5]]
+                reply = "Here are your recent orders:\n" + "\n".join(lines)
+        return {"reply": reply, "products": products, "related": related, "handled": True}
+
+    # --- Named campaign/offer ---
+    if kind == "offer":
+        result = run_tool("search_by_offer", {
+            "offer_query": intent.offer_query or "",
+            "max_price": intent.max_price,
+            "min_price": intent.min_price,
+            "limit": 12,
+        }, user=user)
+        products = result.get("products") or []
+        offers = result.get("offers_matched") or []
+        if products:
+            names = ", ".join(o["name"] for o in offers[:2]) or "the selected sale"
+            reply = f"Here are {len(products)} product(s) in {names}."
+        else:
+            reply = result.get("note") or "No products found for that sale right now."
+        return {"reply": reply, "products": products, "related": related, "handled": True}
+
+    # --- Chip follow-ups that need product_ids ---
+    if kind in ("similar", "cheaper", "accessories", "compare"):
+        if not pids:
+            # No context — let LLM ask / search
+            return {"handled": False, "products": [], "related": [], "reply": None}
+        if kind == "compare":
+            result = run_tool("compare_products", {"product_ids": pids}, user=user)
+            products = result.get("products") or []
+            reply = "Here's a quick comparison of those products." if products else "I couldn't compare those products."
+        else:
+            result = run_tool("recommend_related", {
+                "product_ids": pids,
+                "mode": kind,
+                "domain": domain or intent.domain or intent.theme,
+                "theme": intent.theme,
+                "limit": 6,
+            }, user=user)
+            products = result.get("products") or []
+            labels = {
+                "similar": "similar products",
+                "cheaper": "cheaper alternatives",
+                "accessories": "matching accessories",
+            }
+            reply = (
+                f"Here are {labels.get(kind, 'recommendations')}."
+                if products
+                else "No matching recommendations found for those products right now. Try a different category."
+            )
+        return {"reply": reply, "products": products, "related": related, "handled": True}
+
+    if kind == "add_to_cart":
+        idx = intent.product_index
+        if idx and pids:
+            try:
+                pid = pids[-1] if idx == -1 else pids[idx - 1]
+                detail = run_tool("get_product_details", {"product_id": pid}, user=user)
+                p = detail.get("product")
+                if p:
+                    return {
+                        "reply": f'Use the + button on "{p["name"]}" to add it to your cart.',
+                        "products": [p],
+                        "related": [],
+                        "handled": True,
+                        "add_product_id": pid,
+                    }
+            except (IndexError, TypeError, KeyError):
+                pass
+        return {
+            "reply": "Tap the + on a product card to add it, or tell me which one (e.g. “add the second one”).",
+            "products": [],
+            "related": [],
+            "handled": True,
+        }
+
+    # --- Structured search ONLY when theme and/or price is clear ---
+    if kind == "search" and (intent.theme or intent.max_price is not None or intent.min_price is not None):
+        result = run_tool("search_products", {
+            "query": intent.query or "",
+            "theme": intent.theme,
+            "max_price": intent.max_price,
+            "min_price": intent.min_price,
+            "limit": 8,
+        }, user=user)
+        products = result.get("products") or []
+        if products:
+            bits = []
+            if intent.theme:
+                bits.append(intent.theme)
+            if intent.max_price is not None:
+                bits.append(f"under ₹{intent.max_price:,.0f}")
+            label = " ".join(bits) or "matching"
+            reply = f"Here are {len(products)} {label} product(s)."
+            rel = run_tool("recommend_related", {
+                "product_ids": [p["id"] for p in products[:4]],
+                "mode": "similar",
+                "domain": intent.domain or intent.theme,
+                "theme": intent.theme,
+                "limit": 4,
+            }, user=user)
+            related = [
+                r for r in (rel.get("products") or [])
+                if r.get("id") not in {p["id"] for p in products}
+            ][:4]
+            return {"reply": reply, "products": products, "related": related, "handled": True}
+        # Theme/budget search empty → still handled with honest message for known themes
+        if intent.theme:
+            return {
+                "reply": f"I couldn't find {intent.theme} products"
+                + (f" under ₹{intent.max_price:,.0f}" if intent.max_price else "")
+                + " right now. Try another category or budget.",
+                "products": [],
+                "related": [],
+                "handled": True,
+            }
+        # Vague search with only weak query → fall through to LLM
+        return {"handled": False, "products": [], "related": [], "reply": None}
+
+    # Everything else (including "healthy products", gifts, vague asks) → LLM
+    return {"handled": False, "products": [], "related": [], "reply": None}
+
+
+
 def run_assistant(
     messages: list[dict[str, Any]],
     user=None,
     product_ids: list[int] | None = None,
+    conversation_context: dict | None = None,
     max_tool_rounds: int = 4,
 ) -> dict[str, Any]:
     """
-    Run the chat with tool calling.
-
-    messages: list of {role, content} including history.
-    product_ids: recent product ids from the UI for suggestion context.
+    Run the chat with tool calling + deterministic intent resolution.
     """
+    ctx = dict(conversation_context or {})
+    last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    intent = parse_intent(last_user, context=ctx)
+
+    # Prefer ids from context if UI didn't send them
+    pids = list(product_ids or ctx.get("product_ids") or [])
+
+    # Deterministic path for clear shopping intents
+    resolved = resolve_intent_with_tools(intent, user=user, product_ids=pids, domain=ctx.get("domain"))
+    if resolved.get("handled"):
+        products = resolved.get("products") or []
+        related = resolved.get("related") or []
+        new_ctx = build_context_update(intent, products)
+        # Preserve domain across follow-ups
+        if not new_ctx.get("domain") and ctx.get("domain"):
+            new_ctx["domain"] = ctx["domain"]
+        if not new_ctx.get("theme") and ctx.get("theme"):
+            new_ctx["theme"] = ctx["theme"]
+        return {
+            "reply": resolved.get("reply") or "",
+            "products": products[:8],
+            "related": related[:4],
+            "suggestions": contextual_suggestions(intent, products),
+            "context": new_ctx,
+            "tool_trace": [],
+        }
+
     client = _client()
     model = _model_name()
 
     # Expand chip intents on the latest user message
     if messages and messages[-1].get("role") == "user":
-        expanded = expand_suggestion_intent(messages[-1].get("content") or "", product_ids)
+        expanded = expand_suggestion_intent(messages[-1].get("content") or "", pids)
         if expanded:
             messages = list(messages)
             messages[-1] = {**messages[-1], "content": expanded}
+
+    ctx_line = ""
+    if ctx:
+        ctx_line = (
+            f"\nACTIVE CONTEXT: theme={ctx.get('theme')}, domain={ctx.get('domain')}, "
+            f"max_price={ctx.get('max_price')}, offer={ctx.get('offer_query')}. "
+            "Follow-ups must stay in this context."
+        )
 
     system = (
         SYSTEM_PROMPT
         + "\n\n"
         + _auth_status_line(user)
         + "\n"
-        + _product_ids_line(product_ids)
+        + _product_ids_line(pids)
+        + ctx_line
     )
 
     api_messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -334,10 +544,25 @@ def run_assistant(
         last_user = next(
             (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
         )
+        new_ctx = build_context_update(intent, products)
+        if not new_ctx.get("domain") and ctx.get("domain"):
+            new_ctx["domain"] = ctx["domain"]
+        # related products for You May Also Like
+        related = []
+        if products and intent.kind in ("search", "general", "offer"):
+            rel = run_tool("recommend_related", {
+                "product_ids": [p["id"] for p in products[:4]],
+                "mode": "accessories",
+                "domain": new_ctx.get("domain") or intent.domain,
+                "limit": 4,
+            }, user=user)
+            related = [r for r in (rel.get("products") or []) if r.get("id") not in {p["id"] for p in products}][:4]
         return {
             "reply": reply,
             "products": products[:8],
-            "suggestions": _suggest_chips(last_user, products),
+            "related": related,
+            "suggestions": contextual_suggestions(intent, products),
+            "context": new_ctx,
             "tool_trace": tool_trace if settings.DEBUG else [],
         }
 

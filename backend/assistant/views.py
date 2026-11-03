@@ -84,23 +84,30 @@ class ChatView(APIView):
             if m["role"] in (ChatMessage.ROLE_USER, ChatMessage.ROLE_ASSISTANT) and m["content"]
         ]
 
-        # If UI didn't send product_ids, recover from last assistant message meta
-        if not product_ids:
-            last_bot = (
-                session.messages.filter(role=ChatMessage.ROLE_ASSISTANT)
-                .order_by("-created_at")
-                .first()
-            )
-            if last_bot and isinstance(last_bot.meta, dict):
+        # Recover product ids + shopping context from last assistant meta
+        conversation_context = {}
+        last_bot = (
+            session.messages.filter(role=ChatMessage.ROLE_ASSISTANT)
+            .order_by("-created_at")
+            .first()
+        )
+        if last_bot and isinstance(last_bot.meta, dict):
+            if not product_ids:
                 product_ids = [
                     int(p["id"])
                     for p in (last_bot.meta.get("products") or [])
                     if isinstance(p, dict) and p.get("id") is not None
                 ][:12]
+            conversation_context = last_bot.meta.get("context") or {}
 
         try:
             if getattr(settings, "LLM_API_KEY", ""):
-                result = run_assistant(messages, user=user, product_ids=product_ids)
+                result = run_assistant(
+                    messages,
+                    user=user,
+                    product_ids=product_ids,
+                    conversation_context=conversation_context,
+                )
             else:
                 result = simple_keyword_fallback(message, user=user, product_ids=product_ids)
         except Exception as exc:  # noqa: BLE001
@@ -117,7 +124,9 @@ class ChatView(APIView):
 
         reply = result.get("reply") or ""
         products = result.get("products") or []
+        related = result.get("related") or []
         suggestions = result.get("suggestions") or []
+        new_context = result.get("context") or conversation_context
 
         ChatMessage.objects.create(
             session=session,
@@ -135,10 +144,17 @@ class ChatView(APIView):
                         "discount_percent": p.get("discount_percent"),
                         "quantity": p.get("quantity"),
                         "line_total": p.get("line_total"),
+                        "stock": p.get("stock"),
+                        "in_stock": p.get("in_stock"),
                     }
                     for p in products[:8]
                 ],
+                "related": [
+                    {"id": p.get("id"), "name": p.get("name"), "sale_price": p.get("sale_price"), "price": p.get("price"), "image_url": p.get("image_url"), "category": p.get("category"), "discount_percent": p.get("discount_percent"), "stock": p.get("stock"), "in_stock": p.get("in_stock")}
+                    for p in related[:4]
+                ],
                 "suggestions": suggestions,
+                "context": new_context,
             },
         )
         session.save(update_fields=["updated_at"])
@@ -147,8 +163,10 @@ class ChatView(APIView):
             "conversation_id": str(session.id),
             "reply": reply,
             "products": products,
+            "related": related,
             "suggestions": suggestions,
             "authenticated": bool(user),
+            "context": new_context,
         }
         if settings.DEBUG and result.get("tool_trace"):
             payload["tool_trace"] = result["tool_trace"]
