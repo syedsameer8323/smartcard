@@ -1,0 +1,175 @@
+/* Payment method cards + Scan & Pay panel */
+
+.pay-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.pay-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  border: 1.5px solid var(--line, #e5e7eb);
+  background: var(--card, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  color: inherit;
+  font: inherit;
+}
+
+.pay-card:hover {
+  border-color: color-mix(in srgb, var(--brand, #d9341a) 45%, var(--line, #e5e7eb));
+}
+
+.pay-card.active {
+  border-color: var(--brand, #d9341a);
+  background: color-mix(in srgb, var(--brand, #d9341a) 6%, var(--card, #fff));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand, #d9341a) 18%, transparent);
+}
+
+.pay-card-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--brand, #d9341a) 10%, var(--bg-alt, #f8fafc));
+  color: var(--brand-dark, #b91c1c);
+}
+
+.pay-card.active .pay-card-icon {
+  background: var(--brand, #d9341a);
+  color: #fff;
+}
+
+.pay-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pay-card-body b {
+  font-size: 0.95rem;
+}
+
+.pay-card-body small {
+  color: var(--muted, #6b7280);
+  line-height: 1.35;
+}
+
+.pay-card-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 0.2rem;
+  border-radius: 50%;
+  border: 2px solid var(--line, #d1d5db);
+}
+
+.pay-card.active .pay-card-check {
+  border-color: var(--brand, #d9341a);
+  background: var(--brand, #d9341a);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+/* QR panel */
+.qr-panel {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.35rem;
+}
+
+.qr-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.qr-panel-head h3 {
+  margin: 0;
+}
+
+.qr-order-ref {
+  font-size: 0.85rem;
+  color: var(--muted, #6b7280);
+  font-weight: 600;
+}
+
+.qr-test-notice {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  line-height: 1.45;
+}
+
+.qr-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.qr-image-wrap {
+  width: 280px;
+  height: 280px;
+  border-radius: 16px;
+  border: 1px solid var(--line, #e5e7eb);
+  background: #fff;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.qr-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.qr-placeholder {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.qr-amount {
+  font-size: 1.15rem;
+  margin: 0 0 0.5rem;
+}
+
+.qr-timer {
+  font-weight: 600;
+  color: var(--brand-dark, #b91c1c);
+}
+
+.qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 720px) {
+  .qr-grid {
+    grid-template-columns: 1fr;
+  }
+  .qr-image-wrap {
+    width: min(280px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+}

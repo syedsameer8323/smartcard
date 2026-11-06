@@ -21,6 +21,8 @@ urlpatterns = [
     path("payments/razorpay/<int:order_id>/create/", views.RazorpayCreateView.as_view()),
     path("payments/razorpay/<int:order_id>/verify/", views.RazorpayVerifyView.as_view()),
     path("payments/razorpay/<int:order_id>/failure/", views.RazorpayFailureView.as_view()),
+    path("payments/razorpay/<int:order_id>/qr/", views.RazorpayQRCreateView.as_view()),
+    path("payments/razorpay/<int:order_id>/qr/status/", views.RazorpayQRStatusView.as_view()),
     path("seller/notifications/", views.SellerNotificationsView.as_view()),
     path("seller/notifications/<int:pk>/read/", views.SellerNotificationReadView.as_view()),
     path("seller/push-subscription/", views.PushSubscriptionView.as_view()),

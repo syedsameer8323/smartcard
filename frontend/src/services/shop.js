@@ -32,6 +32,8 @@ export const ordersApi = {
   createPayment: (orderId) => api.post(`/payments/razorpay/${orderId}/create/`),
   verifyPayment: (orderId, payload) => api.post(`/payments/razorpay/${orderId}/verify/`, payload),
   paymentFailed: (orderId, payload = {}) => api.post(`/payments/razorpay/${orderId}/failure/`, payload),
+  createQRPayment: (orderId) => api.post(`/payments/razorpay/${orderId}/qr/`),
+  qrPaymentStatus: (orderId) => api.get(`/payments/razorpay/${orderId}/qr/status/`),
 };
 
 export const sellerApi = {

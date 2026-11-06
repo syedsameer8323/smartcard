@@ -147,6 +147,21 @@ export default function Orders() {
                       <small className="muted block">
                         {shortDate(o.created_at)}
                       </small>
+                      <small className="muted block">
+                        {o.payment_method === "razorpay"
+                          ? "Online (Razorpay)"
+                          : o.payment_method === "upi_qr"
+                            ? "Scan & Pay"
+                            : "Cash on Delivery"}
+                        {" · "}
+                        {o.payment_status === "paid"
+                          ? "Paid"
+                          : o.payment_status === "failed"
+                            ? "Failed"
+                            : o.payment_status === "cod_pending"
+                              ? "COD Pending"
+                              : "Payment Pending"}
+                      </small>
                     </td>
 
                     <td>

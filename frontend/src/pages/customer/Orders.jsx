@@ -346,7 +346,9 @@ export default function Orders() {
                     {o.city} {o.state} {o.postal_code} ·{" "}
                     {o.payment_method === "razorpay"
                       ? "Online payment"
-                      : "Cash on delivery"}{" "}
+                      : o.payment_method === "upi_qr"
+                        ? "Scan & Pay (UPI QR)"
+                        : "Cash on delivery"}{" "}
                     · Payment:{" "}
                     {o.payment_status === "paid"
                       ? "Paid"
@@ -375,7 +377,7 @@ export default function Orders() {
                 </div>
 
                 <div className="order-actions">
-                  {o.payment_method === "razorpay" &&
+                  {(o.payment_method === "razorpay" || o.payment_method === "upi_qr") &&
                     o.payment_status !== "paid" && (
                       <button
                         className="btn btn-primary btn-sm"

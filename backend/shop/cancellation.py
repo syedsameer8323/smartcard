@@ -95,10 +95,10 @@ def cancel_items(order, all_items, to_cancel, *, by, reason, note=""):
     if paid and refund_total > 0:
         try:
             refund_id = start_refund(order, refund_total, {"cancelled_by": by})
-        except RefundError:
+        except RefundError as exc:
             logger.exception("Refund failed for order %s", order.pk)
             raise BusinessError(
-                "We couldn't start your refund right now, so nothing was cancelled. Please try again in a few minutes."
+                f"We couldn't start your refund, so nothing was cancelled. {exc}"
             )
         for item in to_cancel:
             item.refund_reference = refund_id

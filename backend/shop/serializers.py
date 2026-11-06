@@ -182,7 +182,7 @@ class CheckoutSerializer(serializers.Serializer):
     postal_code = serializers.CharField(max_length=20)
 
     payment_method = serializers.ChoiceField(
-        choices=["cod", "razorpay"],
+        choices=["cod", "razorpay", "upi_qr"],
         default="cod",
     )
 
@@ -239,6 +239,8 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
     customer = serializers.CharField(source="order.user.name")
     ship_to = serializers.SerializerMethodField()
     line_total = serializers.SerializerMethodField()
+    payment_method = serializers.CharField(source="order.payment_method")
+    payment_status = serializers.CharField(source="order.payment_status")
 
     class Meta:
         model = OrderItem
@@ -266,6 +268,8 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "cancel_reason",
             "cancel_note",
             "refund_amount",
+            "payment_method",
+            "payment_status",
         )
 
     def get_ship_to(self, obj):

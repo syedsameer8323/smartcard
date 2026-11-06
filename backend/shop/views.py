@@ -195,7 +195,7 @@ class OrderListCreateView(APIView):
         data["shipping_fee"] = shipping_fee
         data["coupon_code"] = coupon.code if coupon else ""
         data["total"] = total
-        data["payment_status"] = "pending" if data.get("payment_method") == "razorpay" else "cod_pending"
+        data["payment_status"] = "pending" if data.get("payment_method") in ("razorpay", "upi_qr") else "cod_pending"
         order = Order.objects.create(user=request.user, **data)
         for c in cart:
             p = products[c.product_id]
@@ -229,6 +229,7 @@ class OrderListCreateView(APIView):
             if order.payment_method == "cod":
                 Coupon.objects.filter(pk=coupon.pk).update(usage_count=F("usage_count") + 1)
             else:
+                # razorpay + upi_qr: reserve until payment verified
                 Coupon.objects.filter(pk=coupon.pk).update(reserved_count=F("reserved_count") + 1)
                 order.coupon_reserved = True
                 order.save(update_fields=["coupon_reserved"])
@@ -395,24 +396,43 @@ class RazorpayCreateView(APIView):
     permission_classes = [IsCustomer]
 
     def post(self, request, order_id):
-        order = get_object_or_404(Order, pk=order_id, user=request.user, payment_method="razorpay")
+        order = get_object_or_404(
+            Order, pk=order_id, user=request.user, payment_method__in=["razorpay", "upi_qr"]
+        )
         if order.payment_status == "paid":
             return Response({"message": "This order is already paid."}, status=409)
         key_id, key_secret = os.environ.get("RAZORPAY_KEY_ID"), os.environ.get("RAZORPAY_KEY_SECRET")
         if not key_id or not key_secret:
-            return Response({"message": "Razorpay is not configured. Add test credentials to backend/.env."}, status=503)
+            return Response(
+                {"message": "Razorpay is not configured. Add test credentials to backend/.env."},
+                status=503,
+            )
         try:
             import razorpay
             client = razorpay.Client(auth=(key_id, key_secret))
             if order.razorpay_order_id:
-                return Response({"key_id": key_id, "razorpay_order_id": order.razorpay_order_id,
-                                 "amount": int(order.total * 100), "currency": "INR", "order_code": order.code})
-            payment_order = client.order.create({"amount": int(order.total * 100), "currency": "INR",
-                                                 "receipt": order.code, "notes": {"order_id": str(order.pk)}})
+                return Response({
+                    "key_id": key_id,
+                    "razorpay_order_id": order.razorpay_order_id,
+                    "amount": int(order.total * 100),
+                    "currency": "INR",
+                    "order_code": order.code,
+                })
+            payment_order = client.order.create({
+                "amount": int(order.total * 100),
+                "currency": "INR",
+                "receipt": order.code,
+                "notes": {"order_id": str(order.pk), "payment_method": order.payment_method},
+            })
             order.razorpay_order_id = payment_order["id"]
             order.save(update_fields=["razorpay_order_id"])
-            return Response({"key_id": key_id, "razorpay_order_id": payment_order["id"],
-                             "amount": payment_order["amount"], "currency": "INR", "order_code": order.code})
+            return Response({
+                "key_id": key_id,
+                "razorpay_order_id": payment_order["id"],
+                "amount": payment_order["amount"],
+                "currency": "INR",
+                "order_code": order.code,
+            })
         except ImportError:
             return Response({"message": "Install the Razorpay Python SDK to enable payments."}, status=503)
         except Exception:
@@ -424,7 +444,7 @@ class RazorpayVerifyView(APIView):
 
     @transaction.atomic
     def post(self, request, order_id):
-        order = get_object_or_404(Order.objects.select_for_update(), pk=order_id, user=request.user, payment_method="razorpay")
+        order = get_object_or_404(Order.objects.select_for_update(), pk=order_id, user=request.user, payment_method__in=["razorpay", "upi_qr"])
         if order.payment_status == "paid":
             return Response({"message": "Payment already verified.", "order": OrderSerializer(order).data})
         if not order.items.exclude(status="cancelled").exists():
@@ -482,8 +502,199 @@ class RazorpayFailureView(APIView):
     permission_classes = [IsCustomer]
 
     def post(self, request, order_id):
-        order = get_object_or_404(Order, pk=order_id, user=request.user, payment_method="razorpay")
+        order = get_object_or_404(
+            Order, pk=order_id, user=request.user, payment_method__in=["razorpay", "upi_qr"]
+        )
         if order.payment_status != "paid":
             order.payment_status = "failed"
             order.save(update_fields=["payment_status"])
         return Response({"message": "Payment failure recorded. You can retry payment."})
+
+
+class RazorpayQRCreateView(APIView):
+    """
+    Create / refresh a Razorpay Payment Link for Scan & Pay (UPI QR).
+
+    Test Mode: Payment Links work with Razorpay test credentials. Actual phone UPI
+    apps may not complete real UPI against test links — the UI shows a clear demo notice.
+    Live Mode: set RAZORPAY_QR_LIVE=true with live keys to enable production QR.
+    """
+    permission_classes = [IsCustomer]
+
+    def post(self, request, order_id):
+        order = get_object_or_404(
+            Order, pk=order_id, user=request.user, payment_method__in=["upi_qr", "razorpay"]
+        )
+        if order.payment_status == "paid":
+            return Response({"message": "This order is already paid."}, status=409)
+        key_id = os.environ.get("RAZORPAY_KEY_ID", "")
+        key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+        if not key_id or not key_secret:
+            return Response(
+                {"message": "Razorpay is not configured. Add test credentials to backend/.env."},
+                status=503,
+            )
+        test_mode = key_id.startswith("rzp_test_") or os.environ.get("RAZORPAY_QR_LIVE", "").lower() not in ("1", "true", "yes")
+        try:
+            import razorpay
+            from datetime import timedelta
+            from django.utils import timezone as dj_tz
+
+            client = razorpay.Client(auth=(key_id, key_secret))
+            # Ensure a Razorpay order exists for amount integrity
+            if not order.razorpay_order_id:
+                payment_order = client.order.create({
+                    "amount": int(order.total * 100),
+                    "currency": "INR",
+                    "receipt": order.code,
+                    "notes": {"order_id": str(order.pk), "channel": "upi_qr"},
+                })
+                order.razorpay_order_id = payment_order["id"]
+                order.save(update_fields=["razorpay_order_id"])
+
+            expire_by = int((dj_tz.now() + timedelta(minutes=30)).timestamp())
+            link = client.payment_link.create({
+                "amount": int(order.total * 100),
+                "currency": "INR",
+                "accept_partial": False,
+                "description": f"SmartCart order {order.code}",
+                "customer": {
+                    "name": order.shipping_name or "",
+                    "email": order.email or getattr(order.user, "email", "") or "",
+                    "contact": order.phone or "",
+                },
+                "notify": {"sms": False, "email": False},
+                "reminder_enable": False,
+                "notes": {
+                    "order_id": str(order.pk),
+                    "order_code": order.code,
+                    "razorpay_order_id": order.razorpay_order_id,
+                },
+                "expire_by": expire_by,
+            })
+            short_url = link.get("short_url") or ""
+            link_id = link.get("id") or ""
+            # Store payment link id in payment_reference until paid (payment id overwrites on verify)
+            if link_id and order.payment_status != "paid":
+                order.payment_reference = f"plink:{link_id}"
+                order.save(update_fields=["payment_reference"])
+
+            qr_image = ""
+            if short_url:
+                from urllib.parse import quote
+                qr_image = f"https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={quote(short_url, safe='')}"
+
+            return Response({
+                "order_code": order.code,
+                "amount": float(order.total),
+                "amount_paise": int(order.total * 100),
+                "currency": "INR",
+                "payment_link_id": link_id,
+                "payment_url": short_url,
+                "qr_image_url": qr_image,
+                "expires_in_seconds": 30 * 60,
+                "razorpay_order_id": order.razorpay_order_id,
+                "test_mode": test_mode,
+                "test_mode_notice": (
+                    "Razorpay Test Mode: this QR opens a Razorpay test payment link. "
+                    "Use Razorpay test payment methods to complete payment. "
+                    "Phone UPI apps may not process test-mode UPI QR scans."
+                    if test_mode else ""
+                ),
+            })
+        except ImportError:
+            return Response({"message": "Install the Razorpay Python SDK to enable payments."}, status=503)
+        except Exception as exc:
+            return Response(
+                {"message": f"Unable to create QR payment session. Please retry. ({type(exc).__name__})"},
+                status=502,
+            )
+
+
+class RazorpayQRStatusView(APIView):
+    """Poll payment-link / order payment status for Scan & Pay."""
+    permission_classes = [IsCustomer]
+
+    def get(self, request, order_id):
+        order = get_object_or_404(
+            Order, pk=order_id, user=request.user, payment_method__in=["upi_qr", "razorpay"]
+        )
+        if order.payment_status == "paid":
+            return Response({
+                "payment_status": "paid",
+                "order": OrderSerializer(order).data,
+                "message": "Payment already confirmed.",
+            })
+        key_id = os.environ.get("RAZORPAY_KEY_ID", "")
+        key_secret = os.environ.get("RAZORPAY_KEY_SECRET", "")
+        if not key_id or not key_secret:
+            return Response({"payment_status": order.payment_status, "message": "Gateway not configured."})
+        try:
+            import razorpay
+            client = razorpay.Client(auth=(key_id, key_secret))
+            link_id = ""
+            if (order.payment_reference or "").startswith("plink:"):
+                link_id = order.payment_reference.split(":", 1)[1]
+            if link_id:
+                link = client.payment_link.fetch(link_id)
+                status_val = (link.get("status") or "").lower()
+                if status_val == "paid":
+                    # Confirm order using gateway payments on the link
+                    payments = (link.get("payments") or []) if isinstance(link.get("payments"), list) else []
+                    payment_id = ""
+                    for p in payments:
+                        if p.get("status") in ("captured", "authorized") or p.get("amount"):
+                            payment_id = p.get("payment_id") or p.get("id") or ""
+                            if payment_id:
+                                break
+                    if not payment_id:
+                        # Fallback: list payments for razorpay order
+                        if order.razorpay_order_id:
+                            plist = client.order.payments(order.razorpay_order_id)
+                            for p in (plist.get("items") or []):
+                                if p.get("status") == "captured":
+                                    payment_id = p.get("id")
+                                    break
+                    if payment_id:
+                        with transaction.atomic():
+                            locked = Order.objects.select_for_update().get(pk=order.pk)
+                            if locked.payment_status != "paid":
+                                locked.payment_status = "paid"
+                                locked.payment_reference = payment_id
+                                locked.save(update_fields=["payment_status", "payment_reference"])
+                                OrderItem.objects.filter(order=locked, status="pending").update(status="confirmed")
+                                if locked.coupon_code:
+                                    coupon = Coupon.objects.select_for_update().filter(code=locked.coupon_code).first()
+                                    if coupon:
+                                        if locked.coupon_reserved and coupon.reserved_count > 0:
+                                            coupon.reserved_count -= 1
+                                        coupon.usage_count += 1
+                                        coupon.save(update_fields=["reserved_count", "usage_count"])
+                                        locked.coupon_reserved = False
+                                        locked.save(update_fields=["coupon_reserved"])
+                                notify_sellers(locked, "Payment confirmed", f"Payment for order {locked.code} has been verified.")
+                                customer_email = locked.email or getattr(locked.user, "email", "")
+                                schedule_order_notification(locked, customer_email, "payment_successful")
+                        order.refresh_from_db()
+                        return Response({
+                            "payment_status": "paid",
+                            "order": OrderSerializer(order).data,
+                            "message": "Payment verified successfully.",
+                        })
+                return Response({
+                    "payment_status": status_val or order.payment_status,
+                    "message": f"Payment link status: {status_val or 'created'}.",
+                })
+            # No link — check order payments
+            if order.razorpay_order_id:
+                plist = client.order.payments(order.razorpay_order_id)
+                for p in (plist.get("items") or []):
+                    if p.get("status") == "captured" and int(p.get("amount", -1)) == int(order.total * 100):
+                        return Response({
+                            "payment_status": "captured_pending_verify",
+                            "message": "Payment captured. Confirm from checkout verify if needed.",
+                            "razorpay_payment_id": p.get("id"),
+                        })
+            return Response({"payment_status": order.payment_status, "message": "Awaiting payment."})
+        except Exception:
+            return Response({"payment_status": order.payment_status, "message": "Could not refresh status from gateway."}, status=502)
